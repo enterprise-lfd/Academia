@@ -22,6 +22,18 @@
         .animate-fade-in { animation: fade-in 0.5s ease-out; }
         .animate-slide-up { animation: slide-up 0.5s ease-out; }
         .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+        
+        /* Custom Scrollbar for the exercise grid */
+        .custom-scrollbar::-webkit-scrollbar {
+            width: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #1e293b; 
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #475569; 
+            border-radius: 4px;
+        }
     </style>
 </head>
 <body class="bg-slate-900 text-slate-100">
@@ -37,7 +49,7 @@
           Trophy, Flame, Dumbbell, Footprints, PlusCircle, ShoppingBag, 
           Users, Activity, CheckCircle2, TrendingUp, User as UserIcon, 
           Medal, LogIn, LogOut, Lock, Wifi, WifiOff, AlertTriangle, RefreshCw,
-          Target, Flag, Crown // Novos ícones para Desafios
+          Target, Flag, Crown, Mountain, Music, Heart, Zap // Added new icons
         } from "https://esm.sh/lucide-react@0.263.1?deps=react@18.2.0";
 
         // Firebase v10
@@ -68,11 +80,27 @@
         
         const COLLECTION_NAME = "fitquest_users"; 
         const FEED_COLLECTION_NAME = "fitquest_feed";
-        const CHALLENGES_COLLECTION_NAME = "fitquest_challenges"; // Nova coleção
+        const CHALLENGES_COLLECTION_NAME = "fitquest_challenges";
 
         // --- Constants & Helpers ---
         const LEVELS = [0, 500, 1200, 2500, 5000, 10000]; 
         const DEFAULT_AVATARS = ['🦁', '🐯', '🐻', '🦅', '🦈', '🐺', '🦍', '🦖', '🐉', '🦏'];
+
+        // Lista de Exercícios Atualizada com Pontuação Personalizada
+        const EXERCISES = [
+            { id: 'hotyoga', label: 'Hotyoga', xp: 150, icon: Flame, color: 'orange' },
+            { id: 'volei', label: 'Vôlei', xp: 125, icon: Trophy, color: 'yellow' },
+            { id: 'futebol', label: 'Futebol', xp: 200, icon: Trophy, color: 'green' },
+            { id: 'trilha', label: 'Trilha', xp: 200, icon: Mountain, color: 'emerald' },
+            { id: 'danca', label: 'Dança', xp: 125, icon: Music, color: 'pink' },
+            { id: 'pilates', label: 'Pilates', xp: 175, icon: Activity, color: 'cyan' },
+            { id: 'caminhada', label: 'Caminhada', xp: 100, icon: Footprints, color: 'teal' },
+            { id: 'corrida', label: 'Corrida', xp: 150, icon: Footprints, color: 'blue' },
+            { id: 'musculacao', label: 'Musculação', xp: 125, icon: Dumbbell, color: 'indigo' },
+            { id: 'cardio', label: 'Cardio', xp: 100, icon: Heart, color: 'red' },
+            { id: 'flashback', label: 'Flashback', xp: 125, icon: Zap, color: 'violet' },
+            { id: 'musc_cardio', label: 'Musc. + Cardio', xp: 150, icon: Dumbbell, color: 'purple' }
+        ];
 
         const getLevel = (xp) => {
           let level = 1;
@@ -180,7 +208,7 @@
           );
         }
 
-        // --- Challenge Components (NEW) ---
+        // --- Challenge Components ---
 
         function ChallengeList({ challenges, users, currentUserId, onCreateChallenge, onClaimWin }) {
           const [isCreating, setIsCreating] = useState(false);
@@ -242,26 +270,10 @@
                       React.createElement('div', { className: "space-y-3" }, 
                          users.map(u => {
                              const startXp = challenge.baselines?.[u.id] || 0;
-                             // Se o usuário entrou depois (sem baseline), assume XP atual como baseline ou 0? 
-                             // Melhor: Se não tem baseline, ele "entra agora" com o XP atual? Não, isso seria injusto.
-                             // Lógica simplificada: Se não tem baseline, usamos o XP do momento da criação (que deve ter sido salvo).
-                             // Se o user é novo, startXp = 0? Não, user novo começa do 0.
-                             // Vamos assumir que todos participam.
-                             
                              const currentXp = u.xp || 0;
-                             // Progresso é o XP ganho DESDE o inicio do desafio
-                             // Se startXp > currentXp (erro de dados), progress = 0
                              const progress = Math.max(0, currentXp - startXp);
                              const percentage = Math.min((progress / challenge.targetXP) * 100, 100);
                              const isLeader = !isWinner && percentage >= 100;
-                             
-                             // Detect Win locally to update UI immediately before DB sync
-                             if (isLeader && !challenge.winnerId) {
-                                 // Esse efeito colateral no render não é ideal, mas funciona para protótipo
-                                 // Idealmente, o useEffect pai checaria isso.
-                                 // Vamos deixar um botão de "Reivindicar Vitória" se chegar em 100%
-                             }
-
                              const userWonThis = challenge.winnerId === u.id;
 
                              return React.createElement('div', { key: u.id, className: "relative" }, [
@@ -294,7 +306,7 @@
         }
 
         function WorkoutLogger({ onLog, onCancel }) {
-          const [type, setType] = useState('musculacao');
+          const [type, setType] = useState(EXERCISES[0].id);
           const [intensity, setIntensity] = useState('normal');
           const [notes, setNotes] = useState('');
 
@@ -304,22 +316,20 @@
               " Registrar Treino"
             ]),
             React.createElement('div', { className: "space-y-6", key: 'form' }, [
-              // Type
+              // Type Grid - Scrollable for many items
               React.createElement('div', null, [
-                React.createElement('label', { className: "text-slate-400 text-sm font-medium mb-2 block" }, "Tipo de Treino"),
-                React.createElement('div', { className: "grid grid-cols-3 gap-2" }, [
-                  { id: 'musculacao', icon: Dumbbell, label: 'Musculação', color: 'blue' },
-                  { id: 'corrida', icon: Footprints, label: 'Corrida', color: 'orange' },
-                  { id: 'esportes', icon: Medal, label: 'Esportes', color: 'yellow' }
-                ].map(opt => React.createElement('button', {
+                React.createElement('label', { className: "text-slate-400 text-sm font-medium mb-2 block" }, "Selecione o Treino"),
+                React.createElement('div', { className: "grid grid-cols-3 gap-2 max-h-60 overflow-y-auto custom-scrollbar pr-1" }, 
+                  EXERCISES.map(opt => React.createElement('button', {
                     key: opt.id,
                     onClick: () => setType(opt.id),
-                    className: `p-3 rounded-xl border-2 flex flex-col items-center gap-2 transition-all ${type === opt.id ? `border-${opt.color}-500 bg-${opt.color}-500/20 text-${opt.color}-400` : 'border-slate-700 bg-slate-700/50 text-slate-400'}`
+                    className: `p-2 rounded-xl border-2 flex flex-col items-center gap-1 transition-all min-h-[80px] justify-center ${type === opt.id ? `border-${opt.color}-500 bg-${opt.color}-500/20 text-${opt.color}-400` : 'border-slate-700 bg-slate-700/50 text-slate-400 hover:border-slate-600'}`
                   }, [
-                    React.createElement(opt.icon, { size: 20 }),
-                    React.createElement('span', { className: "font-bold text-xs" }, opt.label)
-                  ])
-                ))
+                    React.createElement(opt.icon, { size: 24 }),
+                    React.createElement('span', { className: "font-bold text-[10px] text-center leading-tight" }, opt.label),
+                    React.createElement('span', { className: "text-[9px] opacity-60" }, `+${opt.xp}xp`)
+                  ]))
+                )
               ]),
               // Intensity
               React.createElement('div', null, [
@@ -332,7 +342,7 @@
                   React.createElement('button', {
                     onClick: () => setIntensity('high'),
                     className: `flex-1 py-2 rounded-md text-sm font-medium transition-colors ${intensity === 'high' ? 'bg-red-500/20 text-red-400 shadow' : 'text-slate-400'}`
-                  }, "Intenso (2x) 🔥")
+                  }, "Intenso 🔥")
                 ])
               ]),
               // Notes
@@ -448,7 +458,11 @@
                     ]),
                     item.type === 'workout' 
                       ? React.createElement('div', null, [
-                          React.createElement('div', { className: "text-sm text-slate-300" }, [ "Completou um treino de ", React.createElement('span', { className: "font-bold capitalize text-blue-400" }, item.workoutType) ]),
+                          React.createElement('div', { className: "text-sm text-slate-300" }, [ 
+                              "Completou ", 
+                              React.createElement('span', { className: "font-bold capitalize text-blue-400" }, item.workoutLabel || item.workoutType), // Use pretty label if available
+                              item.intensity === 'high' && React.createElement('span', { className: "ml-2 bg-orange-500/20 text-orange-400 text-[10px] px-1.5 py-0.5 rounded border border-orange-500/50 font-bold" }, "🔥 INTENSO")
+                          ]),
                           item.notes && React.createElement('div', { className: "text-xs text-slate-500 mt-1 italic" }, `"${item.notes}"`),
                           React.createElement('div', { className: "mt-2 text-xs font-bold text-green-500" }, `+${item.xpGained} XP`)
                         ])
@@ -696,17 +710,24 @@
 
           const handleLogout = () => { setActiveGameUser(null); };
 
-          const handleLogWorkout = async (type, intensity, notes) => {
+          const handleLogWorkout = async (typeId, intensity, notes) => {
             if (!activeGameUser) return;
-            let baseXp = type === 'corrida' ? 120 : (type === 'esportes' ? 110 : 100);
-            let earnedXp = Math.round(baseXp * (intensity === 'high' ? 2 : 1));
+            
+            // Find exercise data
+            const exercise = EXERCISES.find(e => e.id === typeId) || EXERCISES[0];
+            let baseXp = exercise.xp;
+            
+            // NO Multiplier logic as requested, intensity is just a flag now
+            let earnedXp = baseXp; 
+            
             let newStreak = (activeGameUser.streak || 0) + 1; 
             const totalXp = earnedXp;
             const earnedCoins = Math.floor(totalXp / 10);
             
             const feedItem = { 
               userId: activeGameUser.id, userName: activeGameUser.username, userAvatar: activeGameUser.avatar, 
-              type: 'workout', workoutType: type, xpGained: totalXp, timestamp: { seconds: Date.now() / 1000 }, notes: notes || '' 
+              type: 'workout', workoutType: typeId, workoutLabel: exercise.label, xpGained: totalXp, timestamp: { seconds: Date.now() / 1000 }, notes: notes || '',
+              intensity: intensity // Store intensity for feed celebration
             };
 
             if (offlineMode) {
@@ -720,7 +741,7 @@
                 LocalDB.addToFeed(feedItem);
                 setActiveGameUser(updatedUser);
                 refreshData();
-                alert(`Treino Registrado (Offline)! +${totalXp} XP`);
+                alert(`Treino de ${exercise.label} Registrado! +${totalXp} XP`);
                 setActiveTab('dashboard');
                 return;
             }
@@ -730,7 +751,7 @@
                 await updateDoc(userRef, { xp: increment(totalXp), coins: increment(earnedCoins), streak: newStreak, lastWorkout: serverTimestamp() });
                 const feedRef = collection(db, FEED_COLLECTION_NAME);
                 await addDoc(feedRef, { ...feedItem, timestamp: serverTimestamp() });
-                alert(`Treino Registrado! +${totalXp} XP`);
+                alert(`Treino de ${exercise.label} Registrado! +${totalXp} XP`);
                 setActiveTab('dashboard');
             } catch (err) {
                  console.error(err);
@@ -740,7 +761,6 @@
           };
 
           const handleCreateChallenge = async (title, targetXP, prize) => {
-             // 1. Snapshot current XP for all users to serve as baseline
              const baselines = {};
              leaderboard.forEach(u => {
                  baselines[u.id] = u.xp || 0;
@@ -754,7 +774,7 @@
                  winnerId: null,
                  createdAt: offlineMode ? Date.now() : serverTimestamp(),
                  createdBy: activeGameUser.id,
-                 baselines // Everyone starts from 0 relative progress
+                 baselines
              };
 
              if (offlineMode) {
@@ -771,7 +791,7 @@
 
           const handleClaimWin = async (challengeId) => {
              const challenge = challenges.find(c => c.id === challengeId);
-             if(!challenge || challenge.winnerId) return; // Already won
+             if(!challenge || challenge.winnerId) return;
 
              const feedItem = {
                userId: activeGameUser.id, userName: activeGameUser.username, userAvatar: activeGameUser.avatar,
@@ -788,14 +808,7 @@
              }
 
              try {
-                 // Update challenge
-                 const chRef = doc(db, CHALLENGES_COLLECTION_NAME, challenge.id); // Note: challenge.id from firestore might be different if using query loop vs id field. 
-                 // Fix: When fetching from firestore we mapped id: doc.id. So challenge.id is correct doc ID.
-                 // However, offline created challenges have custom IDs that won't work in updateDoc if they aren't in firestore.
-                 // Assuming mixed mode isn't supported for editing (offline created stays offline).
-                 
-                 // Using a query to find doc if ID is custom? No, standard logic assumes matching IDs.
-                 // If document was from firestore, update it.
+                 const chRef = doc(db, CHALLENGES_COLLECTION_NAME, challenge.id); 
                  await updateDoc(chRef, { winnerId: activeGameUser.id });
                  
                  const feedRef = collection(db, FEED_COLLECTION_NAME);
