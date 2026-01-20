@@ -1,0 +1,711 @@
+<!DOCTYPE html>
+<html lang="en">
+
+  <head>
+    <meta charset="UTF-8">
+    <title>Academia Gameficada</title>
+    
+
+  </head>
+    
+  <body>
+  <!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>FitQuest - CodePen Version</title>
+    
+    <!-- 1. Tailwind CSS via CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    
+    <!-- 2. React & ReactDOM Styles/Scripts will be loaded via Module below -->
+    <style>
+        /* Animações personalizadas do Tailwind */
+        @keyframes fade-in {
+            from { opacity: 0; }
+            to { opacity: 1; }
+        }
+        @keyframes slide-up {
+            from { transform: translateY(20px); opacity: 0; }
+            to { transform: translateY(0); opacity: 1; }
+        }
+        .animate-fade-in { animation: fade-in 0.5s ease-out; }
+        .animate-slide-up { animation: slide-up 0.5s ease-out; }
+        .pb-safe { padding-bottom: env(safe-area-inset-bottom); }
+    </style>
+</head>
+<body class="bg-slate-900 text-slate-100">
+    <div id="root"></div>
+
+    <script type="module">
+        // --- IMPORTS VIA CDN (ESM) PARA CODEPEN ---
+        import React, { useState, useEffect } from "https://esm.sh/react@18.2.0";
+        import ReactDOM from "https://esm.sh/react-dom@18.2.0/client";
+        
+        // Lucide Icons
+        import { 
+          Trophy, Flame, Dumbbell, Footprints, PlusCircle, ShoppingBag, 
+          Users, Activity, CheckCircle2, TrendingUp, User as UserIcon, 
+          Medal, LogIn, LogOut, Lock, Wifi, WifiOff, AlertTriangle, RefreshCw
+        } from "https://esm.sh/lucide-react@0.263.1?deps=react@18.2.0";
+
+        // Firebase v10
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-app.js";
+        import { 
+          getAuth, signInAnonymously, onAuthStateChanged, 
+          signInWithCustomToken, signOut 
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
+        import { 
+          getFirestore, collection, doc, setDoc, updateDoc, 
+          onSnapshot, addDoc, serverTimestamp, increment, getDocs, query, where 
+        } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
+
+        // --- SUA CONFIGURAÇÃO ---
+        const firebaseConfig = {
+            apiKey: "AIzaSyCHxhzQMlkv7dkbfNwnvnNd4ssTO0foo4s",
+            authDomain: "academia-2823f.firebaseapp.com",
+            projectId: "academia-2823f",
+            storageBucket: "academia-2823f.firebasestorage.app",
+            messagingSenderId: "989949355006",
+            appId: "1:989949355006:web:ef7b7eba75e4a8134c96af"
+        };
+
+        // Initialize Firebase
+        const app = initializeApp(firebaseConfig);
+        const auth = getAuth(app);
+        const db = getFirestore(app);
+        
+        const COLLECTION_NAME = "fitquest_users"; 
+        const FEED_COLLECTION_NAME = "fitquest_feed";
+
+        // --- Constants & Helpers ---
+        const LEVELS = [0, 500, 1200, 2500, 5000, 10000]; 
+        const DEFAULT_AVATARS = ['🦁', '🐯', '🐻', '🦅', '🦈', '🐺', '🦍', '🦖', '🐉', '🦏'];
+
+        const getLevel = (xp) => {
+          let level = 1;
+          for (let i = 0; i < LEVELS.length; i++) {
+            if (xp >= LEVELS[i]) level = i + 1;
+            else break;
+          }
+          return level;
+        };
+
+        const getProgressToNextLevel = (xp) => {
+          const level = getLevel(xp);
+          const currentLevelXp = LEVELS[level - 1] || 0;
+          const nextLevelXp = LEVELS[level] || LEVELS[LEVELS.length - 1] * 1.5;
+          const progress = ((xp - currentLevelXp) / (nextLevelXp - currentLevelXp)) * 100;
+          return Math.min(Math.max(progress, 0), 100);
+        };
+
+        // --- LOCAL STORAGE MANAGER (Offline Mode) ---
+        const LocalDB = {
+            getUsers: () => JSON.parse(localStorage.getItem(COLLECTION_NAME) || '[]'),
+            saveUser: (user) => {
+                const users = LocalDB.getUsers();
+                const index = users.findIndex(u => u.id === user.id);
+                if (index >= 0) users[index] = { ...users[index], ...user };
+                else users.push(user);
+                localStorage.setItem(COLLECTION_NAME, JSON.stringify(users));
+            },
+            getFeed: () => JSON.parse(localStorage.getItem(FEED_COLLECTION_NAME) || '[]'),
+            addToFeed: (item) => {
+                const feed = LocalDB.getFeed();
+                feed.unshift(item); // Add to top
+                localStorage.setItem(FEED_COLLECTION_NAME, JSON.stringify(feed.slice(0, 50))); // Limit 50
+            }
+        };
+
+        // --- COMPONENTES ---
+
+        function NavButton({ Icon, label, active, onClick }) {
+          return React.createElement('button', {
+            onClick: onClick,
+            className: `flex flex-col items-center gap-1 p-2 transition-colors ${active ? 'text-orange-400' : 'text-slate-400 hover:text-slate-200'}`
+          }, [
+            React.createElement(Icon, { size: 24, key: 'icon' }),
+            React.createElement('span', { className: "text-[10px] font-medium", key: 'label' }, label)
+          ]);
+        }
+
+        function Dashboard({ user, onLogClick }) {
+          return (
+            React.createElement('div', { className: "space-y-6 animate-fade-in" }, [
+              // Streak Card
+              React.createElement('div', { className: "bg-gradient-to-br from-orange-500 to-red-600 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden", key: 'streak' }, [
+                React.createElement('div', { className: "absolute right-0 top-0 opacity-20 transform translate-x-4 -translate-y-4" }, React.createElement(Flame, { size: 120 })),
+                React.createElement('div', { className: "relative z-10" }, [
+                  React.createElement('div', { className: "text-sm font-medium opacity-90 mb-1" }, "Sequência Atual"),
+                  React.createElement('div', { className: "text-4xl font-black flex items-end gap-2" }, [
+                    user.streak || 0,
+                    React.createElement('span', { className: "text-lg font-normal mb-1" }, "dias")
+                  ]),
+                  React.createElement('p', { className: "text-xs opacity-75 mt-2" }, "Mantenha a consistência para ganhar bônus de XP!")
+                ])
+              ]),
+
+              // Stats Grid
+              React.createElement('div', { className: "grid grid-cols-2 gap-4", key: 'stats' }, [
+                React.createElement('div', { className: "bg-slate-800 p-4 rounded-xl border border-slate-700" }, [
+                  React.createElement('div', { className: "text-slate-400 text-xs uppercase font-bold tracking-wider mb-1" }, "Total Treinos"),
+                  React.createElement('div', { className: "text-2xl font-bold text-white flex items-center gap-2" }, [
+                    React.createElement(Dumbbell, { size: 20, className: "text-blue-400" }),
+                    Math.floor((user.xp || 0) / 100)
+                  ])
+                ]),
+                React.createElement('div', { className: "bg-slate-800 p-4 rounded-xl border border-slate-700" }, [
+                  React.createElement('div', { className: "text-slate-400 text-xs uppercase font-bold tracking-wider mb-1" }, "Nível"),
+                  React.createElement('div', { className: "text-2xl font-bold text-white flex items-center gap-2" }, [
+                    React.createElement(Trophy, { size: 20, className: "text-yellow-400" }),
+                    getLevel(user.xp || 0)
+                  ])
+                ])
+              ]),
+
+              // Quick Action
+              React.createElement('div', { className: "bg-slate-800/50 p-6 rounded-xl border border-dashed border-slate-700 flex flex-col items-center justify-center text-center gap-3", key: 'action' }, [
+                React.createElement('p', { className: "text-slate-400" }, "Terminou o treino de hoje?"),
+                React.createElement('button', { 
+                  onClick: onLogClick,
+                  className: "bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-medium transition-colors w-full"
+                }, "Registrar Atividade")
+              ])
+            ])
+          );
+        }
+
+        function WorkoutLogger({ onLog, onCancel }) {
+          const [type, setType] = useState('musculacao');
+          const [intensity, setIntensity] = useState('normal');
+          const [notes, setNotes] = useState('');
+
+          return React.createElement('div', { className: "bg-slate-800 rounded-2xl p-6 border border-slate-700 shadow-xl animate-slide-up" }, [
+            React.createElement('h2', { className: "text-xl font-bold text-white mb-6 flex items-center gap-2", key: 'title' }, [
+              React.createElement(CheckCircle2, { className: "text-green-500" }),
+              " Registrar Treino"
+            ]),
+            React.createElement('div', { className: "space-y-6", key: 'form' }, [
+              // Type
+              React.createElement('div', null, [
+                React.createElement('label', { className: "text-slate-400 text-sm font-medium mb-2 block" }, "Tipo de Treino"),
+                React.createElement('div', { className: "grid grid-cols-3 gap-2" }, [
+                  { id: 'musculacao', icon: Dumbbell, label: 'Musculação', color: 'blue' },
+                  { id: 'corrida', icon: Footprints, label: 'Corrida', color: 'orange' },
+                  { id: 'esportes', icon: Medal, label: 'Esportes', color: 'yellow' }
+                ].map(opt => React.createElement('button', {
+                    key: opt.id,
+                    onClick: () => setType(opt.id),
+                    className: `p-3 rounded-xl border-2 flex flex-col items-center gap-2 transition-all ${type === opt.id ? `border-${opt.color}-500 bg-${opt.color}-500/20 text-${opt.color}-400` : 'border-slate-700 bg-slate-700/50 text-slate-400'}`
+                  }, [
+                    React.createElement(opt.icon, { size: 20 }),
+                    React.createElement('span', { className: "font-bold text-xs" }, opt.label)
+                  ])
+                ))
+              ]),
+              // Intensity
+              React.createElement('div', null, [
+                React.createElement('label', { className: "text-slate-400 text-sm font-medium mb-2 block" }, "Intensidade"),
+                React.createElement('div', { className: "flex bg-slate-700 rounded-lg p-1" }, [
+                  React.createElement('button', {
+                    onClick: () => setIntensity('normal'),
+                    className: `flex-1 py-2 rounded-md text-sm font-medium transition-colors ${intensity === 'normal' ? 'bg-slate-600 text-white shadow' : 'text-slate-400'}`
+                  }, "Normal (1x)"),
+                  React.createElement('button', {
+                    onClick: () => setIntensity('high'),
+                    className: `flex-1 py-2 rounded-md text-sm font-medium transition-colors ${intensity === 'high' ? 'bg-red-500/20 text-red-400 shadow' : 'text-slate-400'}`
+                  }, "Intenso (2x) 🔥")
+                ])
+              ]),
+              // Notes
+              React.createElement('div', null, [
+                React.createElement('label', { className: "text-slate-400 text-sm font-medium mb-2 block" }, "Notas (Opcional)"),
+                React.createElement('textarea', {
+                  value: notes,
+                  onChange: (e) => setNotes(e.target.value),
+                  className: "w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-sm focus:border-blue-500 outline-none",
+                  rows: 3
+                })
+              ]),
+              // Buttons
+              React.createElement('div', { className: "flex gap-3 pt-4" }, [
+                React.createElement('button', { onClick: onCancel, className: "flex-1 py-3 rounded-lg font-medium text-slate-400 hover:bg-slate-700 transition-colors" }, "Cancelar"),
+                React.createElement('button', { onClick: () => onLog(type, intensity, notes), className: "flex-1 bg-green-600 hover:bg-green-500 py-3 rounded-lg font-bold text-white shadow-lg transition-colors" }, "Confirmar")
+              ])
+            ])
+          ]);
+        }
+
+        function Leaderboard({ users, currentUserId }) {
+           return React.createElement('div', { className: "space-y-4" }, [
+             React.createElement('h2', { className: "text-xl font-bold text-white mb-4 flex items-center gap-2", key: 'title' }, [
+               React.createElement(Trophy, { className: "text-yellow-500" }),
+               " Ranking Global"
+             ]),
+             React.createElement('div', { className: "space-y-2", key: 'list' }, 
+               users.map((u, index) => 
+                 React.createElement('div', { 
+                   key: u.id || index,
+                   className: `flex items-center gap-4 p-3 rounded-xl border ${u.id === currentUserId ? 'bg-blue-900/30 border-blue-500/50' : 'bg-slate-800 border-slate-700'}`
+                 }, [
+                   React.createElement('div', { className: "flex-shrink-0 w-8 text-center font-bold text-slate-500" }, `#${index + 1}`),
+                   React.createElement('div', { className: "h-10 w-10 rounded-full bg-slate-700 flex items-center justify-center text-xl" }, u.avatar),
+                   React.createElement('div', { className: "flex-1 min-w-0" }, [
+                     React.createElement('div', { className: "font-bold text-white truncate" }, u.username),
+                     React.createElement('div', { className: "text-xs text-slate-400" }, `Lvl ${getLevel(u.xp || 0)} • ${u.streak || 0} dias 🔥`)
+                   ]),
+                   React.createElement('div', { className: "font-mono font-bold text-orange-400" }, `${u.xp || 0} XP`)
+                 ])
+               )
+             )
+           ]);
+        }
+        
+        function RewardShop({ user, onAdd, onRedeem }) {
+          const [isAdding, setIsAdding] = useState(false);
+          const [newTitle, setNewTitle] = useState('');
+          const [newCost, setNewCost] = useState('');
+          
+          const activeRewards = user.myRewards?.filter(r => !r.redeemed) || [];
+          const currentCoins = user.coins || 0;
+
+          return React.createElement('div', { className: "space-y-6" }, [
+            React.createElement('div', { className: "flex justify-between items-center", key: 'header' }, [
+              React.createElement('h2', { className: "text-xl font-bold text-white flex items-center gap-2" }, [
+                React.createElement(ShoppingBag, { className: "text-purple-500" }), " Recompensas"
+              ]),
+              React.createElement('button', {
+                onClick: () => setIsAdding(!isAdding),
+                className: "text-sm bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded-lg text-white transition-colors"
+              }, isAdding ? 'Cancelar' : '+ Criar Nova')
+            ]),
+            
+            isAdding && React.createElement('div', { className: "bg-slate-800 p-4 rounded-xl border border-slate-700 animate-fade-in", key: 'add-form' }, [
+               React.createElement('input', { type: "text", placeholder: "Nome (ex: Pizza)", className: "w-full bg-slate-900 border border-slate-700 rounded p-2 text-white text-sm mb-2", value: newTitle, onChange: e => setNewTitle(e.target.value) }),
+               React.createElement('input', { type: "number", placeholder: "Custo", className: "w-full bg-slate-900 border border-slate-700 rounded p-2 text-white text-sm mb-2", value: newCost, onChange: e => setNewCost(e.target.value) }),
+               React.createElement('button', {
+                 onClick: () => { if(newTitle && newCost) { onAdd(newTitle, newCost); setIsAdding(false); setNewTitle(''); setNewCost(''); } },
+                 className: "w-full bg-purple-600 hover:bg-purple-500 text-white font-bold py-2 rounded"
+               }, "Adicionar")
+            ]),
+
+            React.createElement('div', { className: "grid gap-3", key: 'rewards-list' }, 
+              activeRewards.map(reward => {
+                const percentage = Math.min((currentCoins / reward.cost) * 100, 100);
+                return React.createElement('div', { key: reward.id, className: "bg-slate-800 p-4 rounded-xl border border-slate-700" }, [
+                  React.createElement('div', { className: "flex justify-between items-start mb-3" }, [
+                     React.createElement('div', null, [
+                       React.createElement('div', { className: "font-bold text-white" }, reward.title),
+                       React.createElement('div', { className: "text-xs text-slate-400 mt-1" }, `Meta: ${reward.cost} moedas`)
+                     ]),
+                     React.createElement('button', {
+                       onClick: () => onRedeem(reward.id, reward.cost),
+                       disabled: currentCoins < reward.cost,
+                       className: `px-4 py-2 rounded-lg text-sm font-bold transition-colors ${currentCoins >= reward.cost ? 'bg-green-600 text-white hover:bg-green-500' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`
+                     }, "Resgatar")
+                  ]),
+                  React.createElement('div', { className: "w-full bg-slate-900 h-3 rounded-full overflow-hidden relative border border-slate-700/50" }, [
+                    React.createElement('div', { className: "bg-gradient-to-r from-yellow-600 to-yellow-400 h-full transition-all duration-700", style: { width: `${percentage}%` } }),
+                    React.createElement('div', { className: "absolute inset-0 flex items-center justify-center text-[9px] font-bold text-white drop-shadow-md" }, `${currentCoins} / ${reward.cost}`)
+                  ])
+                ]);
+              })
+            )
+          ]);
+        }
+        
+        function ActivityFeed({ feed }) {
+          return React.createElement('div', { className: "space-y-4" }, [
+             React.createElement('h2', { className: "text-xl font-bold text-white mb-4 flex items-center gap-2", key: 'title' }, [
+               React.createElement(TrendingUp, { className: "text-blue-400" }), " Atividade da Galera"
+             ]),
+             React.createElement('div', { className: "space-y-4 relative before:absolute before:left-4 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800", key: 'feed-list' },
+               feed.map((item, i) => React.createElement('div', { key: item.id || i, className: "relative pl-10" }, [
+                  React.createElement('div', { className: "absolute left-2 top-0 w-4 h-4 rounded-full bg-slate-700 border-2 border-slate-900 z-10 text-[10px] flex items-center justify-center" }, item.type === 'reward' ? '🎁' : '💪'),
+                  React.createElement('div', { className: "bg-slate-800 p-3 rounded-xl border border-slate-700" }, [
+                    React.createElement('div', { className: "flex items-center gap-2 mb-1" }, [
+                      React.createElement('span', { className: "text-lg" }, item.userAvatar),
+                      React.createElement('span', { className: "font-bold text-slate-200" }, item.userName),
+                      React.createElement('span', { className: "text-xs text-slate-500 ml-auto" }, item.timestamp?.seconds ? new Date(item.timestamp.seconds * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Agora')
+                    ]),
+                    item.type === 'workout' 
+                      ? React.createElement('div', null, [
+                          React.createElement('div', { className: "text-sm text-slate-300" }, [ "Completou um treino de ", React.createElement('span', { className: "font-bold capitalize text-blue-400" }, item.workoutType) ]),
+                          item.notes && React.createElement('div', { className: "text-xs text-slate-500 mt-1 italic" }, `"${item.notes}"`),
+                          React.createElement('div', { className: "mt-2 text-xs font-bold text-green-500" }, `+${item.xpGained} XP`)
+                        ])
+                      : React.createElement('div', { className: "text-sm text-slate-300" }, [ "Resgatou a recompensa: ", React.createElement('span', { className: "text-purple-400 font-bold" }, item.rewardTitle) ])
+                  ])
+               ]))
+             )
+          ]);
+        }
+
+        function AuthScreen({ onLogin, onRegister, offlineMode, onRetryConnection }) {
+           const [isRegistering, setIsRegistering] = useState(false);
+           const [username, setUsername] = useState('');
+           const [pin, setPin] = useState('');
+           const [avatar, setAvatar] = useState(DEFAULT_AVATARS[0]);
+
+           return React.createElement('div', { className: "min-h-screen bg-slate-900 flex flex-col items-center justify-center p-6 text-white" }, [
+             React.createElement('div', { className: "mb-8 text-center animate-fade-in", key: 'logo' }, [
+               React.createElement('div', { className: "inline-block p-4 rounded-full bg-slate-800 mb-4 border-2 border-orange-500 relative" }, [
+                  React.createElement(Flame, { size: 48, className: "text-orange-500" }),
+                  offlineMode && React.createElement('div', { className: "absolute -top-2 -right-2 bg-red-600 rounded-full p-1 border-2 border-slate-900" }, React.createElement(WifiOff, { size: 12 }))
+               ]),
+               React.createElement('h1', { className: "text-4xl font-black text-white tracking-tight mb-2" }, "FitQuest"),
+               React.createElement('p', { className: "text-slate-400" }, "Entre na competição."),
+               offlineMode && React.createElement('div', { className: "mt-4 flex flex-col items-center gap-2" }, [
+                   React.createElement('p', { className: "text-red-400 text-xs font-bold bg-red-900/20 py-1 px-3 rounded border border-red-800" }, "Modo Offline"),
+                   React.createElement('button', { 
+                       onClick: onRetryConnection,
+                       className: "flex items-center gap-2 text-xs bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded text-white transition-colors"
+                   }, [ React.createElement(RefreshCw, { size: 12 }), "Tentar Reconectar" ])
+               ])
+             ]),
+             React.createElement('div', { className: "w-full max-w-sm bg-slate-800 p-6 rounded-2xl border border-slate-700 shadow-xl", key: 'card' }, [
+                React.createElement('div', { className: "flex gap-2 mb-6 border-b border-slate-700 pb-4" }, [
+                  React.createElement('button', { onClick: () => setIsRegistering(false), className: `flex-1 py-2 font-bold text-sm rounded transition-colors ${!isRegistering ? 'bg-slate-700 text-white' : 'text-slate-500'}` }, "Entrar"),
+                  React.createElement('button', { onClick: () => setIsRegistering(true), className: `flex-1 py-2 font-bold text-sm rounded transition-colors ${isRegistering ? 'bg-orange-600 text-white' : 'text-slate-500'}` }, "Criar Conta")
+                ]),
+                React.createElement('div', { className: "space-y-4" }, [
+                   React.createElement('div', null, [
+                      React.createElement('label', { className: "block text-xs font-bold text-slate-400 uppercase mb-1" }, "Nome de Usuário"),
+                      React.createElement('input', { type: "text", value: username, onChange: e => setUsername(e.target.value), className: "w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-orange-500" })
+                   ]),
+                   React.createElement('div', null, [
+                      React.createElement('label', { className: "block text-xs font-bold text-slate-400 uppercase mb-1" }, "PIN"),
+                      React.createElement('input', { type: "password", value: pin, onChange: e => setPin(e.target.value), className: "w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white outline-none focus:border-orange-500" })
+                   ]),
+                   isRegistering && React.createElement('div', { className: "animate-slide-up" }, [
+                      React.createElement('label', { className: "block text-xs font-bold text-slate-400 uppercase mb-2" }, "Avatar"),
+                      React.createElement('div', { className: "grid grid-cols-5 gap-2" }, DEFAULT_AVATARS.map(a => 
+                        React.createElement('button', { key: a, onClick: () => setAvatar(a), className: `text-xl p-2 rounded-lg border-2 ${avatar === a ? 'border-orange-500 bg-slate-700' : 'border-transparent'}` }, a)
+                      ))
+                   ]),
+                   React.createElement('button', {
+                     onClick: () => { if(username && pin) isRegistering ? onRegister(username, pin, avatar) : onLogin(username, pin) },
+                     className: `w-full font-bold py-3 rounded-lg shadow-lg transition-colors mt-2 ${isRegistering ? 'bg-orange-600 hover:bg-orange-700 text-white' : 'bg-blue-600 hover:bg-blue-700 text-white'}`
+                   }, isRegistering ? 'Começar Jornada' : 'Acessar Painel')
+                ])
+             ])
+           ]);
+        }
+
+        // --- MAIN COMPONENT ---
+        function FitQuestApp() {
+          const [firebaseConnected, setFirebaseConnected] = useState(false);
+          const [activeGameUser, setActiveGameUser] = useState(null);
+          const [activeTab, setActiveTab] = useState('dashboard');
+          const [leaderboard, setLeaderboard] = useState([]);
+          const [feed, setFeed] = useState([]);
+          const [offlineMode, setOfflineMode] = useState(false);
+
+          const connectFirebase = async () => {
+             try { 
+                 setOfflineMode(false); // Reset to try online
+                 await signInAnonymously(auth); 
+                 setFirebaseConnected(true);
+             } catch (error) { 
+                 console.error("Firebase connection error (likely Auth not enabled):", error);
+                 setOfflineMode(true); 
+                 alert("Não foi possível conectar ao servidor. O app funcionará offline. Verifique se a Autenticação Anônima está ativada no Firebase.");
+             }
+          };
+
+          useEffect(() => {
+            connectFirebase();
+            const unsubscribe = onAuthStateChanged(auth, (u) => {
+              if (u) setFirebaseConnected(true);
+            });
+            return () => unsubscribe();
+          }, []);
+
+          // Data Refresh Logic (Handles both Online and Offline Updates)
+          const refreshData = async () => {
+             if (offlineMode) {
+                 if(activeGameUser) {
+                    const users = LocalDB.getUsers();
+                    const freshUser = users.find(u => u.id === activeGameUser.id);
+                    if(freshUser) setActiveGameUser(freshUser);
+                 }
+                 const users = LocalDB.getUsers();
+                 users.sort((a, b) => (b.xp || 0) - (a.xp || 0));
+                 setLeaderboard(users);
+                 setFeed(LocalDB.getFeed());
+             }
+          };
+
+          // Data Listeners
+          useEffect(() => {
+            if (offlineMode) {
+                refreshData();
+                return; 
+            }
+            if (!firebaseConnected || !activeGameUser) return;
+
+            // User Listener
+            const userRef = doc(db, COLLECTION_NAME, activeGameUser.id);
+            const unsubUser = onSnapshot(userRef, 
+                (docSnap) => {
+                    if (docSnap.exists()) setActiveGameUser({ id: docSnap.id, ...docSnap.data() });
+                },
+                (err) => {
+                    console.warn("Permission Error (User): Switching to Offline Mode", err);
+                    setOfflineMode(true);
+                    alert("Erro de Permissão do Banco de Dados. Mude as regras para 'allow read, write: if true;' ou 'if request.auth != null;'. Mudando para Offline.");
+                }
+            );
+
+            // Leaderboard Listener
+            const usersRef = collection(db, COLLECTION_NAME);
+            const unsubLeaderboard = onSnapshot(usersRef, 
+                (snapshot) => {
+                    const users = [];
+                    snapshot.forEach(doc => users.push({ id: doc.id, ...doc.data() }));
+                    users.sort((a, b) => (b.xp || 0) - (a.xp || 0));
+                    setLeaderboard(users);
+                },
+                (err) => {
+                    console.warn("Permission Error (Leaderboard): Switching to Offline Mode", err);
+                    setOfflineMode(true);
+                }
+            );
+
+            // Feed Listener
+            const feedRef = collection(db, FEED_COLLECTION_NAME);
+            const unsubFeed = onSnapshot(feedRef, 
+                (snapshot) => {
+                    const activities = [];
+                    snapshot.forEach(doc => activities.push({ id: doc.id, ...doc.data() }));
+                    activities.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
+                    setFeed(activities.slice(0, 20));
+                },
+                (err) => {
+                     setOfflineMode(true);
+                }
+            );
+
+            return () => { unsubUser(); unsubLeaderboard(); unsubFeed(); };
+          }, [firebaseConnected, activeGameUser?.id, offlineMode]);
+
+          // Actions
+          const handleRegister = async (username, pin, avatar) => {
+            const newUser = { username, pin, avatar, xp: 0, coins: 0, streak: 0, joinedAt: offlineMode ? Date.now() : serverTimestamp(), myRewards: [] };
+            
+            if (offlineMode) {
+                const users = LocalDB.getUsers();
+                if(users.some(u => u.username === username)) { alert("Usuário existe (Local)."); return; }
+                newUser.id = "local_" + Date.now();
+                LocalDB.saveUser(newUser);
+                setActiveGameUser(newUser);
+                refreshData();
+                return;
+            }
+
+            try {
+                const usersRef = collection(db, COLLECTION_NAME);
+                const q = query(usersRef, where("username", "==", username));
+                const snapshot = await getDocs(q);
+                if (!snapshot.empty) { alert("Este nome de usuário já existe."); return; }
+
+                const docRef = await addDoc(usersRef, newUser);
+                setActiveGameUser({ id: docRef.id, ...newUser });
+            } catch (err) {
+                console.error("Register Error:", err);
+                if(err.code === 'permission-denied') {
+                    alert("Erro de permissão no Firebase. As regras do banco estão bloqueadas. Mudando para modo Offline.");
+                    setOfflineMode(true);
+                    newUser.id = "local_" + Date.now();
+                    LocalDB.saveUser(newUser);
+                    setActiveGameUser(newUser);
+                    refreshData();
+                } else {
+                    alert("Erro ao conectar: " + err.message);
+                }
+            }
+          };
+
+          const handleLogin = async (username, pin) => {
+            if (offlineMode) {
+                const users = LocalDB.getUsers();
+                const user = users.find(u => u.username === username && u.pin === pin);
+                if (user) {
+                    setActiveGameUser(user);
+                    refreshData();
+                } else { alert("Login inválido (Offline)."); }
+                return;
+            }
+
+            try {
+                const usersRef = collection(db, COLLECTION_NAME);
+                const q = query(usersRef, where("username", "==", username), where("pin", "==", pin));
+                const snapshot = await getDocs(q);
+
+                if (!snapshot.empty) {
+                  const userDoc = snapshot.docs[0];
+                  setActiveGameUser({ id: userDoc.id, ...userDoc.data() });
+                } else { alert("Usuário ou PIN incorretos."); }
+            } catch (err) {
+                 console.error("Login Error:", err);
+                 if(err.code === 'permission-denied') {
+                    setOfflineMode(true);
+                    alert("Erro de permissão no Firebase. Tentando login local...");
+                    const users = LocalDB.getUsers();
+                    const user = users.find(u => u.username === username && u.pin === pin);
+                    if (user) setActiveGameUser(user);
+                 } else {
+                     alert("Erro ao logar: " + err.message);
+                 }
+            }
+          };
+
+          const handleLogout = () => { setActiveGameUser(null); };
+
+          const handleLogWorkout = async (type, intensity, notes) => {
+            if (!activeGameUser) return;
+            let baseXp = type === 'corrida' ? 120 : (type === 'esportes' ? 110 : 100);
+            let earnedXp = Math.round(baseXp * (intensity === 'high' ? 2 : 1));
+            let newStreak = (activeGameUser.streak || 0) + 1; 
+            const totalXp = earnedXp;
+            const earnedCoins = Math.floor(totalXp / 10);
+            
+            const feedItem = { 
+              userId: activeGameUser.id, userName: activeGameUser.username, userAvatar: activeGameUser.avatar, 
+              type: 'workout', workoutType: type, xpGained: totalXp, timestamp: { seconds: Date.now() / 1000 }, notes: notes || '' 
+            };
+
+            if (offlineMode) {
+                const updatedUser = { 
+                    ...activeGameUser, 
+                    xp: (activeGameUser.xp || 0) + totalXp, 
+                    coins: (activeGameUser.coins || 0) + earnedCoins, 
+                    streak: newStreak 
+                };
+                LocalDB.saveUser(updatedUser);
+                LocalDB.addToFeed(feedItem);
+                setActiveGameUser(updatedUser);
+                refreshData();
+                alert(`Treino Registrado (Offline)! +${totalXp} XP`);
+                setActiveTab('dashboard');
+                return;
+            }
+
+            try {
+                const userRef = doc(db, COLLECTION_NAME, activeGameUser.id);
+                await updateDoc(userRef, { xp: increment(totalXp), coins: increment(earnedCoins), streak: newStreak, lastWorkout: serverTimestamp() });
+                const feedRef = collection(db, FEED_COLLECTION_NAME);
+                await addDoc(feedRef, { ...feedItem, timestamp: serverTimestamp() });
+                alert(`Treino Registrado! +${totalXp} XP`);
+                setActiveTab('dashboard');
+            } catch (err) {
+                 console.error(err);
+                 setOfflineMode(true); // Switch to offline if it fails mid-operation
+                 alert("Erro de conexão. Mudando para offline.");
+            }
+          };
+
+          const handleAddReward = async (title, cost) => {
+             const newReward = { id: Date.now().toString(), title, cost: parseInt(cost), redeemed: false };
+             
+             if (offlineMode) {
+                 const updatedUser = { ...activeGameUser, myRewards: [...(activeGameUser.myRewards || []), newReward] };
+                 LocalDB.saveUser(updatedUser);
+                 setActiveGameUser(updatedUser);
+                 return;
+             }
+
+             try {
+                 const userRef = doc(db, COLLECTION_NAME, activeGameUser.id);
+                 await updateDoc(userRef, { myRewards: [...(activeGameUser.myRewards || []), newReward] });
+             } catch(err) { setOfflineMode(true); alert("Erro de conexão. Mudando para offline."); }
+          };
+
+          const handleRedeemReward = async (rewardId, cost) => {
+             const updatedRewards = activeGameUser.myRewards.map(r => r.id === rewardId ? { ...r, redeemed: true } : r);
+             const rewardTitle = activeGameUser.myRewards.find(r => r.id === rewardId)?.title;
+             const feedItem = { 
+               userId: activeGameUser.id, userName: activeGameUser.username, userAvatar: activeGameUser.avatar, 
+               type: 'reward', rewardTitle: rewardTitle, timestamp: { seconds: Date.now() / 1000 }
+             };
+
+             if (offlineMode) {
+                 const updatedUser = { 
+                     ...activeGameUser, 
+                     coins: (activeGameUser.coins || 0) - cost,
+                     myRewards: updatedRewards 
+                 };
+                 LocalDB.saveUser(updatedUser);
+                 LocalDB.addToFeed(feedItem);
+                 setActiveGameUser(updatedUser);
+                 refreshData();
+                 return;
+             }
+
+             try {
+                const userRef = doc(db, COLLECTION_NAME, activeGameUser.id);
+                await updateDoc(userRef, { coins: increment(-cost), myRewards: updatedRewards });
+                const feedRef = collection(db, FEED_COLLECTION_NAME);
+                await addDoc(feedRef, { ...feedItem, timestamp: serverTimestamp() });
+             } catch(err) { setOfflineMode(true); alert("Erro de conexão. Mudando para offline."); }
+          };
+
+          if (!activeGameUser) return React.createElement(AuthScreen, { onLogin: handleLogin, onRegister: handleRegister, offlineMode, onRetryConnection: connectFirebase });
+
+          return React.createElement('div', { className: "min-h-screen bg-slate-900 text-slate-100 font-sans pb-20" }, [
+            // Header
+            React.createElement('div', { className: "bg-slate-800 p-4 sticky top-0 z-10 shadow-lg border-b border-slate-700", key: "header" }, [
+              React.createElement('div', { className: "flex justify-between items-center mb-2" }, [
+                React.createElement('h1', { className: "text-xl font-bold text-orange-500 flex items-center gap-2" }, [ React.createElement(Flame), " FitQuest" ]),
+                React.createElement('div', { className: "flex items-center gap-3" }, [
+                   React.createElement('div', { className: "flex items-center gap-1", title: offlineMode ? "Modo Offline" : "Online" }, 
+                        offlineMode 
+                        ? React.createElement(WifiOff, { size: 16, className: "text-red-500" }) 
+                        : React.createElement(Wifi, { size: 16, className: "text-green-500" })
+                   ),
+                   React.createElement('button', { onClick: handleLogout }, React.createElement(LogOut, { size: 18 })),
+                   React.createElement('div', { className: "bg-slate-700 px-3 py-1 rounded-full text-sm font-bold text-yellow-400" }, `🪙 ${activeGameUser.coins || 0}`),
+                   React.createElement('div', { className: "h-8 w-8 rounded-full bg-slate-600 flex items-center justify-center text-xl border-2 border-slate-500" }, activeGameUser.avatar)
+                ])
+              ]),
+              React.createElement('div', { className: "w-full bg-slate-700 h-2 rounded-full mt-2 overflow-hidden" },
+                React.createElement('div', { className: "bg-gradient-to-r from-blue-500 to-cyan-400 h-full", style: { width: `${getProgressToNextLevel(activeGameUser.xp || 0)}%` } })
+              )
+            ]),
+
+            // Content
+            React.createElement('div', { className: "p-4 max-w-md mx-auto", key: "content" }, [
+               offlineMode && React.createElement('div', { className: "bg-red-500/10 border border-red-500/50 text-red-200 text-xs p-2 rounded mb-4 flex items-center gap-2" }, [
+                   React.createElement(AlertTriangle, { size: 14 }), " Modo Offline: Dados salvos apenas neste dispositivo."
+               ]),
+               activeTab === 'dashboard' && React.createElement(Dashboard, { user: activeGameUser, onLogClick: () => setActiveTab('log') }),
+               activeTab === 'log' && React.createElement(WorkoutLogger, { onLog: handleLogWorkout, onCancel: () => setActiveTab('dashboard') }),
+               activeTab === 'leaderboard' && React.createElement(Leaderboard, { users: leaderboard, currentUserId: activeGameUser.id }),
+               activeTab === 'rewards' && React.createElement(RewardShop, { user: activeGameUser, onAdd: handleAddReward, onRedeem: handleRedeemReward }),
+               activeTab === 'feed' && React.createElement(ActivityFeed, { feed: feed })
+            ]),
+
+            // Navigation
+            React.createElement('div', { className: "fixed bottom-0 left-0 w-full bg-slate-800 border-t border-slate-700 p-2 flex justify-around items-center z-20 pb-safe", key: "nav" }, [
+               React.createElement(NavButton, { Icon: Activity, label: "Painel", active: activeTab === 'dashboard', onClick: () => setActiveTab('dashboard') }),
+               React.createElement(NavButton, { Icon: Users, label: "Ranking", active: activeTab === 'leaderboard', onClick: () => setActiveTab('leaderboard') }),
+               React.createElement('div', { className: "relative -top-5" }, 
+                 React.createElement('button', { onClick: () => setActiveTab('log'), className: "bg-orange-500 hover:bg-orange-600 text-white p-4 rounded-full shadow-lg border-4 border-slate-900" }, React.createElement(PlusCircle, { size: 32 }))
+               ),
+               React.createElement(NavButton, { Icon: ShoppingBag, label: "Prêmios", active: activeTab === 'rewards', onClick: () => setActiveTab('rewards') }),
+               React.createElement(NavButton, { Icon: TrendingUp, label: "Feed", active: activeTab === 'feed', onClick: () => setActiveTab('feed') })
+            ])
+          ]);
+        }
+
+        // Render
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(React.createElement(FitQuestApp));
+    </script>
+</body>
+</html>
+    
+  </body>
+  
+</html>
