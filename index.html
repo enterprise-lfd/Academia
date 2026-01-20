@@ -49,7 +49,7 @@
           Trophy, Flame, Dumbbell, Footprints, PlusCircle, ShoppingBag, 
           Users, Activity, CheckCircle2, TrendingUp, User as UserIcon, 
           Medal, LogIn, LogOut, Lock, Wifi, WifiOff, AlertTriangle, RefreshCw,
-          Target, Flag, Crown, Mountain, Music, Heart, Zap
+          Target, Flag, Crown, Mountain, Music, Heart, Zap, Trash2 // Added Trash2
         } from "https://esm.sh/lucide-react@0.263.1?deps=react@18.2.0";
 
         // Firebase v10
@@ -252,6 +252,7 @@
                     const isWinner = !!challenge.winnerId;
                     
                     return React.createElement('div', { key: challenge.id, className: `bg-slate-800 p-4 rounded-xl border ${isWinner ? 'border-yellow-500/50' : 'border-slate-700'}` }, [
+                      // Header Card
                       React.createElement('div', { className: "flex justify-between items-start mb-4" }, [
                         React.createElement('div', null, [
                           React.createElement('h3', { className: "font-bold text-white text-lg" }, challenge.title),
@@ -263,12 +264,14 @@
                         isWinner && React.createElement('div', { className: "bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded text-xs font-bold border border-yellow-500/50" }, "FINALIZADO")
                       ]),
 
+                      // Participants Bars
                       React.createElement('div', { className: "space-y-3" }, 
                          users.map(u => {
                              const startXp = challenge.baselines?.[u.id] || 0;
                              const currentXp = u.xp || 0;
                              const progress = Math.max(0, currentXp - startXp);
                              const percentage = Math.min((progress / challenge.targetXP) * 100, 100);
+                             const isLeader = !isWinner && percentage >= 100;
                              const userWonThis = challenge.winnerId === u.id;
 
                              return React.createElement('div', { key: u.id, className: "relative" }, [
@@ -285,6 +288,7 @@
                                          style: { width: `${percentage}%` } 
                                      })
                                  ),
+                                 // Botão de Reivindicar (se 100% e não finalizado)
                                  (!isWinner && percentage >= 100 && u.id === currentUserId) && 
                                  React.createElement('button', {
                                      onClick: () => onClaimWin(challenge.id),
@@ -383,7 +387,7 @@
            ]);
         }
         
-        function RewardShop({ user, onAdd, onRedeem }) {
+        function RewardShop({ user, onAdd, onRedeem, onDelete }) { // Updated to accept onDelete
           const [isAdding, setIsAdding] = useState(false);
           const [newTitle, setNewTitle] = useState('');
           const [newCost, setNewCost] = useState('');
@@ -414,17 +418,28 @@
             React.createElement('div', { className: "grid gap-3", key: 'rewards-list' }, 
               activeRewards.map(reward => {
                 const percentage = Math.min((currentCoins / reward.cost) * 100, 100);
-                return React.createElement('div', { key: reward.id, className: "bg-slate-800 p-4 rounded-xl border border-slate-700" }, [
+                return React.createElement('div', { key: reward.id, className: "bg-slate-800 p-4 rounded-xl border border-slate-700 relative" }, [ // Relative for positioning
                   React.createElement('div', { className: "flex justify-between items-start mb-3" }, [
                      React.createElement('div', null, [
                        React.createElement('div', { className: "font-bold text-white" }, reward.title),
                        React.createElement('div', { className: "text-xs text-slate-400 mt-1" }, `Meta: ${reward.cost} moedas`)
                      ]),
-                     React.createElement('button', {
-                       onClick: () => onRedeem(reward.id, reward.cost),
-                       disabled: currentCoins < reward.cost,
-                       className: `px-4 py-2 rounded-lg text-sm font-bold transition-colors ${currentCoins >= reward.cost ? 'bg-green-600 text-white hover:bg-green-500' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`
-                     }, "Resgatar")
+                     React.createElement('div', { className: "flex items-center gap-2" }, [ // Container for buttons
+                        React.createElement('button', {
+                            onClick: () => {
+                                if (confirm("Tem certeza que deseja excluir esta recompensa?")) {
+                                    onDelete(reward.id);
+                                }
+                            },
+                            className: "p-2 rounded-lg text-red-500 hover:bg-slate-700 transition-colors",
+                            title: "Excluir Recompensa"
+                        }, React.createElement(Trash2, { size: 16 })),
+                        React.createElement('button', {
+                            onClick: () => onRedeem(reward.id, reward.cost),
+                            disabled: currentCoins < reward.cost,
+                            className: `px-4 py-2 rounded-lg text-sm font-bold transition-colors ${currentCoins >= reward.cost ? 'bg-green-600 text-white hover:bg-green-500' : 'bg-slate-700 text-slate-500 cursor-not-allowed'}`
+                        }, "Resgatar")
+                     ])
                   ]),
                   React.createElement('div', { className: "w-full bg-slate-900 h-3 rounded-full overflow-hidden relative border border-slate-700/50" }, [
                     React.createElement('div', { className: "bg-gradient-to-r from-yellow-600 to-yellow-400 h-full transition-all duration-700", style: { width: `${percentage}%` } }),
@@ -864,6 +879,25 @@
              } catch(err) { setOfflineMode(true); alert("Erro de conexão. Mudando para offline."); }
           };
 
+          // --- NOVO: Função para excluir recompensa ---
+          const handleDeleteReward = async (rewardId) => {
+             if (!activeGameUser) return;
+             const updatedRewards = activeGameUser.myRewards.filter(r => r.id !== rewardId);
+
+             if (offlineMode) {
+                 const updatedUser = { ...activeGameUser, myRewards: updatedRewards };
+                 LocalDB.saveUser(updatedUser);
+                 setActiveGameUser(updatedUser);
+                 return;
+             }
+
+             try {
+                 const userRef = doc(db, COLLECTION_NAME, activeGameUser.id);
+                 await updateDoc(userRef, { myRewards: updatedRewards });
+                 // update local state optimisticly or wait for snapshot? Snapshot handles it.
+             } catch(err) { setOfflineMode(true); alert("Erro de conexão. Mudando para offline."); }
+          };
+
           if (!activeGameUser) return React.createElement(AuthScreen, { onLogin: handleLogin, onRegister: handleRegister, offlineMode, onRetryConnection: connectFirebase });
 
           return React.createElement('div', { className: "min-h-screen bg-slate-900 text-slate-100 font-sans pb-20" }, [
@@ -896,7 +930,7 @@
                activeTab === 'log' && React.createElement(WorkoutLogger, { onLog: handleLogWorkout, onCancel: () => setActiveTab('dashboard') }),
                activeTab === 'leaderboard' && React.createElement(Leaderboard, { users: leaderboard, currentUserId: activeGameUser.id }),
                activeTab === 'challenges' && React.createElement(ChallengeList, { challenges: challenges, users: leaderboard, currentUserId: activeGameUser.id, onCreateChallenge: handleCreateChallenge, onClaimWin: handleClaimWin }),
-               activeTab === 'rewards' && React.createElement(RewardShop, { user: activeGameUser, onAdd: handleAddReward, onRedeem: handleRedeemReward }),
+               activeTab === 'rewards' && React.createElement(RewardShop, { user: activeGameUser, onAdd: handleAddReward, onRedeem: handleRedeemReward, onDelete: handleDeleteReward }),
                activeTab === 'feed' && React.createElement(ActivityFeed, { feed: feed })
             ]),
 
