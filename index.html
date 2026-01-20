@@ -1,15 +1,4 @@
 <!DOCTYPE html>
-<html lang="en">
-
-  <head>
-    <meta charset="UTF-8">
-    <title>Academia Gameficada</title>
-    
-
-  </head>
-    
-  <body>
-  <!DOCTYPE html>
 <html lang="pt-BR">
 <head>
     <meta charset="UTF-8">
@@ -47,7 +36,8 @@
         import { 
           Trophy, Flame, Dumbbell, Footprints, PlusCircle, ShoppingBag, 
           Users, Activity, CheckCircle2, TrendingUp, User as UserIcon, 
-          Medal, LogIn, LogOut, Lock, Wifi, WifiOff, AlertTriangle, RefreshCw
+          Medal, LogIn, LogOut, Lock, Wifi, WifiOff, AlertTriangle, RefreshCw,
+          Target, Flag, Crown // Novos ícones para Desafios
         } from "https://esm.sh/lucide-react@0.263.1?deps=react@18.2.0";
 
         // Firebase v10
@@ -78,6 +68,7 @@
         
         const COLLECTION_NAME = "fitquest_users"; 
         const FEED_COLLECTION_NAME = "fitquest_feed";
+        const CHALLENGES_COLLECTION_NAME = "fitquest_challenges"; // Nova coleção
 
         // --- Constants & Helpers ---
         const LEVELS = [0, 500, 1200, 2500, 5000, 10000]; 
@@ -115,6 +106,14 @@
                 const feed = LocalDB.getFeed();
                 feed.unshift(item); // Add to top
                 localStorage.setItem(FEED_COLLECTION_NAME, JSON.stringify(feed.slice(0, 50))); // Limit 50
+            },
+            getChallenges: () => JSON.parse(localStorage.getItem(CHALLENGES_COLLECTION_NAME) || '[]'),
+            saveChallenge: (challenge) => {
+                const challenges = LocalDB.getChallenges();
+                const index = challenges.findIndex(c => c.id === challenge.id);
+                if (index >= 0) challenges[index] = { ...challenges[index], ...challenge };
+                else challenges.push(challenge);
+                localStorage.setItem(CHALLENGES_COLLECTION_NAME, JSON.stringify(challenges));
             }
         };
 
@@ -130,7 +129,7 @@
           ]);
         }
 
-        function Dashboard({ user, onLogClick }) {
+        function Dashboard({ user, onLogClick, leaderboard, currentUserId }) {
           return (
             React.createElement('div', { className: "space-y-6 animate-fade-in" }, [
               // Streak Card
@@ -171,9 +170,127 @@
                   onClick: onLogClick,
                   className: "bg-blue-600 hover:bg-blue-500 text-white px-6 py-2 rounded-lg font-medium transition-colors w-full"
                 }, "Registrar Atividade")
+              ]),
+
+              // Ranking (Restaurado no Painel)
+              React.createElement('div', { className: "pt-4 border-t border-slate-700", key: 'ranking-section' }, [
+                 React.createElement(Leaderboard, { users: leaderboard, currentUserId: currentUserId })
               ])
             ])
           );
+        }
+
+        // --- Challenge Components (NEW) ---
+
+        function ChallengeList({ challenges, users, currentUserId, onCreateChallenge, onClaimWin }) {
+          const [isCreating, setIsCreating] = useState(false);
+          const [newTitle, setNewTitle] = useState('');
+          const [newTarget, setNewTarget] = useState('1000');
+          const [newPrize, setNewPrize] = useState('');
+
+          return React.createElement('div', { className: "space-y-6" }, [
+            React.createElement('div', { className: "flex justify-between items-center", key: 'header' }, [
+              React.createElement('h2', { className: "text-xl font-bold text-white flex items-center gap-2" }, [
+                React.createElement(Target, { className: "text-red-500" }), " Metas Coletivas"
+              ]),
+              React.createElement('button', {
+                onClick: () => setIsCreating(!isCreating),
+                className: "text-sm bg-slate-700 hover:bg-slate-600 px-3 py-1 rounded-lg text-white transition-colors"
+              }, isCreating ? 'Cancelar' : '+ Novo Desafio')
+            ]),
+
+            isCreating && React.createElement('div', { className: "bg-slate-800 p-4 rounded-xl border border-slate-700 animate-fade-in", key: 'create-form' }, [
+               React.createElement('h3', { className: "font-bold text-white mb-3" }, "Criar Competição"),
+               React.createElement('input', { type: "text", placeholder: "Título (ex: Corrida 2k XP)", className: "w-full bg-slate-900 border border-slate-700 rounded p-2 text-white text-sm mb-2", value: newTitle, onChange: e => setNewTitle(e.target.value) }),
+               React.createElement('div', { className: "flex gap-2 mb-2" }, [
+                   React.createElement('input', { type: "number", placeholder: "Meta de XP", className: "flex-1 bg-slate-900 border border-slate-700 rounded p-2 text-white text-sm", value: newTarget, onChange: e => setNewTarget(e.target.value) }),
+                   React.createElement('div', { className: "flex items-center text-slate-400 text-sm" }, "XP")
+               ]),
+               React.createElement('input', { type: "text", placeholder: "Prêmio (ex: Jantar pago)", className: "w-full bg-slate-900 border border-slate-700 rounded p-2 text-white text-sm mb-2", value: newPrize, onChange: e => setNewPrize(e.target.value) }),
+               React.createElement('button', {
+                 onClick: () => { 
+                    if(newTitle && newTarget && newPrize) { 
+                        onCreateChallenge(newTitle, parseInt(newTarget), newPrize); 
+                        setIsCreating(false); 
+                        setNewTitle(''); setNewTarget(''); setNewPrize('');
+                    } 
+                 },
+                 className: "w-full bg-red-600 hover:bg-red-500 text-white font-bold py-2 rounded"
+               }, "Lançar Desafio")
+            ]),
+
+            React.createElement('div', { className: "space-y-4", key: 'challenges-list' }, 
+              challenges.length === 0 
+                ? React.createElement('div', { className: "text-center text-slate-500 py-8" }, "Nenhum desafio ativo. Crie um!")
+                : challenges.map(challenge => {
+                    const isWinner = !!challenge.winnerId;
+                    
+                    return React.createElement('div', { key: challenge.id, className: `bg-slate-800 p-4 rounded-xl border ${isWinner ? 'border-yellow-500/50' : 'border-slate-700'}` }, [
+                      // Header Card
+                      React.createElement('div', { className: "flex justify-between items-start mb-4" }, [
+                        React.createElement('div', null, [
+                          React.createElement('h3', { className: "font-bold text-white text-lg" }, challenge.title),
+                          React.createElement('div', { className: "text-xs text-slate-400 flex items-center gap-1" }, [
+                            React.createElement(Flag, { size: 12 }), `Meta: ${challenge.targetXP} XP`
+                          ]),
+                          React.createElement('div', { className: "text-xs text-yellow-400 font-bold mt-1" }, `🏆 Prêmio: ${challenge.prize}`)
+                        ]),
+                        isWinner && React.createElement('div', { className: "bg-yellow-500/20 text-yellow-400 px-2 py-1 rounded text-xs font-bold border border-yellow-500/50" }, "FINALIZADO")
+                      ]),
+
+                      // Participants Bars
+                      React.createElement('div', { className: "space-y-3" }, 
+                         users.map(u => {
+                             const startXp = challenge.baselines?.[u.id] || 0;
+                             // Se o usuário entrou depois (sem baseline), assume XP atual como baseline ou 0? 
+                             // Melhor: Se não tem baseline, ele "entra agora" com o XP atual? Não, isso seria injusto.
+                             // Lógica simplificada: Se não tem baseline, usamos o XP do momento da criação (que deve ter sido salvo).
+                             // Se o user é novo, startXp = 0? Não, user novo começa do 0.
+                             // Vamos assumir que todos participam.
+                             
+                             const currentXp = u.xp || 0;
+                             // Progresso é o XP ganho DESDE o inicio do desafio
+                             // Se startXp > currentXp (erro de dados), progress = 0
+                             const progress = Math.max(0, currentXp - startXp);
+                             const percentage = Math.min((progress / challenge.targetXP) * 100, 100);
+                             const isLeader = !isWinner && percentage >= 100;
+                             
+                             // Detect Win locally to update UI immediately before DB sync
+                             if (isLeader && !challenge.winnerId) {
+                                 // Esse efeito colateral no render não é ideal, mas funciona para protótipo
+                                 // Idealmente, o useEffect pai checaria isso.
+                                 // Vamos deixar um botão de "Reivindicar Vitória" se chegar em 100%
+                             }
+
+                             const userWonThis = challenge.winnerId === u.id;
+
+                             return React.createElement('div', { key: u.id, className: "relative" }, [
+                                 React.createElement('div', { className: "flex justify-between text-xs mb-1" }, [
+                                     React.createElement('span', { className: "font-bold text-slate-300 flex items-center gap-1" }, [
+                                        u.avatar, u.username,
+                                        userWonThis && React.createElement(Crown, { size: 14, className: "text-yellow-400 fill-yellow-400" })
+                                     ]),
+                                     React.createElement('span', { className: "text-slate-500" }, `${progress} / ${challenge.targetXP}`)
+                                 ]),
+                                 React.createElement('div', { className: "w-full bg-slate-900 h-2 rounded-full overflow-hidden" },
+                                     React.createElement('div', { 
+                                         className: `h-full transition-all duration-700 ${userWonThis ? 'bg-yellow-400' : 'bg-red-500'}`, 
+                                         style: { width: `${percentage}%` } 
+                                     })
+                                 ),
+                                 // Botão de Reivindicar (se 100% e não finalizado)
+                                 (!isWinner && percentage >= 100 && u.id === currentUserId) && 
+                                 React.createElement('button', {
+                                     onClick: () => onClaimWin(challenge.id),
+                                     className: "absolute right-0 -top-1 bg-yellow-500 hover:bg-yellow-400 text-slate-900 text-[10px] font-bold px-2 py-0.5 rounded animate-pulse"
+                                 }, "REIVINDICAR VITÓRIA!")
+                             ]);
+                         })
+                      )
+                    ]);
+                })
+            )
+          ]);
         }
 
         function WorkoutLogger({ onLog, onCancel }) {
@@ -322,7 +439,7 @@
              ]),
              React.createElement('div', { className: "space-y-4 relative before:absolute before:left-4 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800", key: 'feed-list' },
                feed.map((item, i) => React.createElement('div', { key: item.id || i, className: "relative pl-10" }, [
-                  React.createElement('div', { className: "absolute left-2 top-0 w-4 h-4 rounded-full bg-slate-700 border-2 border-slate-900 z-10 text-[10px] flex items-center justify-center" }, item.type === 'reward' ? '🎁' : '💪'),
+                  React.createElement('div', { className: "absolute left-2 top-0 w-4 h-4 rounded-full bg-slate-700 border-2 border-slate-900 z-10 text-[10px] flex items-center justify-center" }, item.type === 'reward' ? '🎁' : (item.type === 'win' ? '🏆' : '💪')),
                   React.createElement('div', { className: "bg-slate-800 p-3 rounded-xl border border-slate-700" }, [
                     React.createElement('div', { className: "flex items-center gap-2 mb-1" }, [
                       React.createElement('span', { className: "text-lg" }, item.userAvatar),
@@ -335,7 +452,9 @@
                           item.notes && React.createElement('div', { className: "text-xs text-slate-500 mt-1 italic" }, `"${item.notes}"`),
                           React.createElement('div', { className: "mt-2 text-xs font-bold text-green-500" }, `+${item.xpGained} XP`)
                         ])
-                      : React.createElement('div', { className: "text-sm text-slate-300" }, [ "Resgatou a recompensa: ", React.createElement('span', { className: "text-purple-400 font-bold" }, item.rewardTitle) ])
+                      : (item.type === 'win' 
+                          ? React.createElement('div', { className: "text-sm text-yellow-400 font-bold" }, [ "VENCEU O DESAFIO: ", item.challengeTitle, "!" ])
+                          : React.createElement('div', { className: "text-sm text-slate-300" }, [ "Resgatou a recompensa: ", React.createElement('span', { className: "text-purple-400 font-bold" }, item.rewardTitle) ]))
                   ])
                ]))
              )
@@ -399,6 +518,7 @@
           const [activeGameUser, setActiveGameUser] = useState(null);
           const [activeTab, setActiveTab] = useState('dashboard');
           const [leaderboard, setLeaderboard] = useState([]);
+          const [challenges, setChallenges] = useState([]);
           const [feed, setFeed] = useState([]);
           const [offlineMode, setOfflineMode] = useState(false);
 
@@ -434,6 +554,7 @@
                  users.sort((a, b) => (b.xp || 0) - (a.xp || 0));
                  setLeaderboard(users);
                  setFeed(LocalDB.getFeed());
+                 setChallenges(LocalDB.getChallenges());
              }
           };
 
@@ -454,7 +575,7 @@
                 (err) => {
                     console.warn("Permission Error (User): Switching to Offline Mode", err);
                     setOfflineMode(true);
-                    alert("Erro de Permissão do Banco de Dados. Mude as regras para 'allow read, write: if true;' ou 'if request.auth != null;'. Mudando para Offline.");
+                    alert("Erro de Permissão do Banco de Dados. Mudando para Offline.");
                 }
             );
 
@@ -487,7 +608,19 @@
                 }
             );
 
-            return () => { unsubUser(); unsubLeaderboard(); unsubFeed(); };
+            // Challenges Listener
+            const challengesRef = collection(db, CHALLENGES_COLLECTION_NAME);
+            const unsubChallenges = onSnapshot(challengesRef,
+                (snapshot) => {
+                    const ch = [];
+                    snapshot.forEach(doc => ch.push({ id: doc.id, ...doc.data() }));
+                    // Sort active first? Or newest first
+                    ch.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
+                    setChallenges(ch);
+                }
+            );
+
+            return () => { unsubUser(); unsubLeaderboard(); unsubFeed(); unsubChallenges(); };
           }, [firebaseConnected, activeGameUser?.id, offlineMode]);
 
           // Actions
@@ -601,9 +734,74 @@
                 setActiveTab('dashboard');
             } catch (err) {
                  console.error(err);
-                 setOfflineMode(true); // Switch to offline if it fails mid-operation
+                 setOfflineMode(true); 
                  alert("Erro de conexão. Mudando para offline.");
             }
+          };
+
+          const handleCreateChallenge = async (title, targetXP, prize) => {
+             // 1. Snapshot current XP for all users to serve as baseline
+             const baselines = {};
+             leaderboard.forEach(u => {
+                 baselines[u.id] = u.xp || 0;
+             });
+
+             const newChallenge = {
+                 id: "ch_" + Date.now(),
+                 title,
+                 targetXP,
+                 prize,
+                 winnerId: null,
+                 createdAt: offlineMode ? Date.now() : serverTimestamp(),
+                 createdBy: activeGameUser.id,
+                 baselines // Everyone starts from 0 relative progress
+             };
+
+             if (offlineMode) {
+                 LocalDB.saveChallenge(newChallenge);
+                 refreshData();
+                 return;
+             }
+
+             try {
+                 const challengesRef = collection(db, CHALLENGES_COLLECTION_NAME);
+                 await addDoc(challengesRef, newChallenge);
+             } catch(err) { alert("Erro ao criar desafio."); }
+          };
+
+          const handleClaimWin = async (challengeId) => {
+             const challenge = challenges.find(c => c.id === challengeId);
+             if(!challenge || challenge.winnerId) return; // Already won
+
+             const feedItem = {
+               userId: activeGameUser.id, userName: activeGameUser.username, userAvatar: activeGameUser.avatar,
+               type: 'win', challengeTitle: challenge.title, timestamp: { seconds: Date.now() / 1000 }
+             };
+
+             if(offlineMode) {
+                const updatedChallenge = { ...challenge, winnerId: activeGameUser.id };
+                LocalDB.saveChallenge(updatedChallenge);
+                LocalDB.addToFeed(feedItem);
+                refreshData();
+                alert("Parabéns! Você venceu o desafio!");
+                return;
+             }
+
+             try {
+                 // Update challenge
+                 const chRef = doc(db, CHALLENGES_COLLECTION_NAME, challenge.id); // Note: challenge.id from firestore might be different if using query loop vs id field. 
+                 // Fix: When fetching from firestore we mapped id: doc.id. So challenge.id is correct doc ID.
+                 // However, offline created challenges have custom IDs that won't work in updateDoc if they aren't in firestore.
+                 // Assuming mixed mode isn't supported for editing (offline created stays offline).
+                 
+                 // Using a query to find doc if ID is custom? No, standard logic assumes matching IDs.
+                 // If document was from firestore, update it.
+                 await updateDoc(chRef, { winnerId: activeGameUser.id });
+                 
+                 const feedRef = collection(db, FEED_COLLECTION_NAME);
+                 await addDoc(feedRef, { ...feedItem, timestamp: serverTimestamp() });
+                 alert("Parabéns! Você venceu o desafio!");
+             } catch(err) { console.error(err); }
           };
 
           const handleAddReward = async (title, cost) => {
@@ -679,9 +877,10 @@
                offlineMode && React.createElement('div', { className: "bg-red-500/10 border border-red-500/50 text-red-200 text-xs p-2 rounded mb-4 flex items-center gap-2" }, [
                    React.createElement(AlertTriangle, { size: 14 }), " Modo Offline: Dados salvos apenas neste dispositivo."
                ]),
-               activeTab === 'dashboard' && React.createElement(Dashboard, { user: activeGameUser, onLogClick: () => setActiveTab('log') }),
+               activeTab === 'dashboard' && React.createElement(Dashboard, { user: activeGameUser, onLogClick: () => setActiveTab('log'), leaderboard: leaderboard, currentUserId: activeGameUser.id }),
                activeTab === 'log' && React.createElement(WorkoutLogger, { onLog: handleLogWorkout, onCancel: () => setActiveTab('dashboard') }),
                activeTab === 'leaderboard' && React.createElement(Leaderboard, { users: leaderboard, currentUserId: activeGameUser.id }),
+               activeTab === 'challenges' && React.createElement(ChallengeList, { challenges: challenges, users: leaderboard, currentUserId: activeGameUser.id, onCreateChallenge: handleCreateChallenge, onClaimWin: handleClaimWin }),
                activeTab === 'rewards' && React.createElement(RewardShop, { user: activeGameUser, onAdd: handleAddReward, onRedeem: handleRedeemReward }),
                activeTab === 'feed' && React.createElement(ActivityFeed, { feed: feed })
             ]),
@@ -689,7 +888,7 @@
             // Navigation
             React.createElement('div', { className: "fixed bottom-0 left-0 w-full bg-slate-800 border-t border-slate-700 p-2 flex justify-around items-center z-20 pb-safe", key: "nav" }, [
                React.createElement(NavButton, { Icon: Activity, label: "Painel", active: activeTab === 'dashboard', onClick: () => setActiveTab('dashboard') }),
-               React.createElement(NavButton, { Icon: Users, label: "Ranking", active: activeTab === 'leaderboard', onClick: () => setActiveTab('leaderboard') }),
+               React.createElement(NavButton, { Icon: Target, label: "Desafios", active: activeTab === 'challenges', onClick: () => setActiveTab('challenges') }),
                React.createElement('div', { className: "relative -top-5" }, 
                  React.createElement('button', { onClick: () => setActiveTab('log'), className: "bg-orange-500 hover:bg-orange-600 text-white p-4 rounded-full shadow-lg border-4 border-slate-900" }, React.createElement(PlusCircle, { size: 32 }))
                ),
@@ -704,8 +903,4 @@
         root.render(React.createElement(FitQuestApp));
     </script>
 </body>
-</html>
-    
-  </body>
-  
 </html>
