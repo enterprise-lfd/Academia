@@ -49,7 +49,8 @@
           Trophy, Flame, Dumbbell, Footprints, PlusCircle, ShoppingBag, 
           Users, Activity, CheckCircle2, TrendingUp, User as UserIcon, 
           Medal, LogIn, LogOut, Lock, Wifi, WifiOff, AlertTriangle, RefreshCw,
-          Target, Flag, Crown, Mountain, Music, Heart, Zap, Trash2, Calendar, Edit2, X
+          Target, Flag, Crown, Mountain, Music, Heart, Zap, Trash2, Calendar, Edit2, X,
+          Bike, Waves, Sword, Gamepad2, Skull // More icons for custom exercises
         } from "https://esm.sh/lucide-react@0.263.1?deps=react@18.2.0";
 
         // Firebase v10
@@ -60,7 +61,7 @@
         } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
         import { 
           getFirestore, collection, doc, setDoc, updateDoc, 
-          onSnapshot, addDoc, serverTimestamp, increment, getDocs, query, where, getDoc 
+          onSnapshot, addDoc, serverTimestamp, increment, getDocs, query, where, getDoc, deleteDoc
         } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         // --- SUA CONFIGURAÇÃO ---
@@ -81,25 +82,32 @@
         const COLLECTION_NAME = "fitquest_users"; 
         const FEED_COLLECTION_NAME = "fitquest_feed";
         const CHALLENGES_COLLECTION_NAME = "fitquest_challenges";
+        const EXERCISES_COLLECTION_NAME = "fitquest_exercises"; // New collection for custom exercises
 
         // --- Constants & Helpers ---
         const LEVELS = [0, 500, 1200, 2500, 5000, 10000]; 
         const DEFAULT_AVATARS = ['🦁', '🐯', '🐻', '🦅', '🦈', '🐺', '🦍', '🦖', '🐉', '🦏'];
 
-        // Lista de Exercícios - Fonte da Verdade para XP
-        const EXERCISES = [
-            { id: 'hotyoga', label: 'Hotyoga', xp: 150, icon: Flame, color: 'orange' },
-            { id: 'volei', label: 'Vôlei', xp: 125, icon: Trophy, color: 'yellow' },
-            { id: 'futebol', label: 'Futebol', xp: 200, icon: Trophy, color: 'green' },
-            { id: 'trilha', label: 'Trilha', xp: 200, icon: Mountain, color: 'emerald' },
-            { id: 'danca', label: 'Dança', xp: 125, icon: Music, color: 'pink' },
-            { id: 'pilates', label: 'Pilates', xp: 175, icon: Activity, color: 'cyan' },
-            { id: 'caminhada', label: 'Caminhada', xp: 100, icon: Footprints, color: 'teal' },
-            { id: 'corrida', label: 'Corrida', xp: 150, icon: Footprints, color: 'blue' },
-            { id: 'musculacao', label: 'Musculação', xp: 125, icon: Dumbbell, color: 'indigo' },
-            { id: 'cardio', label: 'Cardio', xp: 100, icon: Heart, color: 'red' },
-            { id: 'flashback', label: 'Flashback', xp: 125, icon: Zap, color: 'violet' },
-            { id: 'musc_cardio', label: 'Musc. + Cardio', xp: 150, icon: Dumbbell, color: 'purple' }
+        // Icon Map for Dynamic Icons
+        const ICON_MAP = {
+            Flame, Trophy, Dumbbell, Mountain, Music, Activity, Footprints, Heart, Zap,
+            Bike, Waves, Sword, Gamepad2, Skull, Target, Medal
+        };
+
+        // Lista de Exercícios Padrão
+        const DEFAULT_EXERCISES = [
+            { id: 'hotyoga', label: 'Hotyoga', xp: 150, iconKey: 'Flame', color: 'orange' },
+            { id: 'volei', label: 'Vôlei', xp: 125, iconKey: 'Trophy', color: 'yellow' },
+            { id: 'futebol', label: 'Futebol', xp: 200, iconKey: 'Trophy', color: 'green' },
+            { id: 'trilha', label: 'Trilha', xp: 200, iconKey: 'Mountain', color: 'emerald' },
+            { id: 'danca', label: 'Dança', xp: 125, iconKey: 'Music', color: 'pink' },
+            { id: 'pilates', label: 'Pilates', xp: 175, iconKey: 'Activity', color: 'cyan' },
+            { id: 'caminhada', label: 'Caminhada', xp: 100, iconKey: 'Footprints', color: 'teal' },
+            { id: 'corrida', label: 'Corrida', xp: 150, iconKey: 'Footprints', color: 'blue' },
+            { id: 'musculacao', label: 'Musculação', xp: 125, iconKey: 'Dumbbell', color: 'indigo' },
+            { id: 'cardio', label: 'Cardio', xp: 100, iconKey: 'Heart', color: 'red' },
+            { id: 'flashback', label: 'Flashback', xp: 125, iconKey: 'Zap', color: 'violet' },
+            { id: 'musc_cardio', label: 'Musc. + Cardio', xp: 150, iconKey: 'Dumbbell', color: 'purple' }
         ];
 
         const getLevel = (xp) => {
@@ -121,8 +129,6 @@
 
         const formatDate = (timestamp) => {
             if (!timestamp) return 'Data desc.';
-            
-            // Handle Firestore Timestamp or JS Date or ISO String
             let date;
             if (timestamp.seconds) {
                 date = new Date(timestamp.seconds * 1000);
@@ -131,21 +137,16 @@
             } else {
                 date = timestamp;
             }
-
             const today = new Date();
             const isToday = date.getDate() === today.getDate() && 
                             date.getMonth() === today.getMonth() && 
                             date.getFullYear() === today.getFullYear();
-            
-            if (isToday) {
-                return `Hoje, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
-            }
-            
+            if (isToday) return `Hoje, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
             return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + 
                    ` às ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
         };
 
-        // --- LOCAL STORAGE MANAGER (Offline Mode) ---
+        // --- LOCAL STORAGE MANAGER ---
         const LocalDB = {
             getUsers: () => JSON.parse(localStorage.getItem(COLLECTION_NAME) || '[]'),
             saveUser: (user) => {
@@ -177,6 +178,12 @@
                 if (index >= 0) challenges[index] = { ...challenges[index], ...challenge };
                 else challenges.push(challenge);
                 localStorage.setItem(CHALLENGES_COLLECTION_NAME, JSON.stringify(challenges));
+            },
+            getCustomExercises: () => JSON.parse(localStorage.getItem(EXERCISES_COLLECTION_NAME) || '[]'),
+            saveCustomExercise: (ex) => {
+                const list = LocalDB.getCustomExercises();
+                list.push(ex);
+                localStorage.setItem(EXERCISES_COLLECTION_NAME, JSON.stringify(list));
             }
         };
 
@@ -192,19 +199,48 @@
           ]);
         }
 
+        // --- Helper function for Streak Calculation ---
+        const calculateEffectiveStreak = (user) => {
+            let streak = user.streak || 0;
+            if (user.lastWorkout) {
+                let lastDate;
+                if (user.lastWorkout.seconds) {
+                    lastDate = new Date(user.lastWorkout.seconds * 1000);
+                } else if (typeof user.lastWorkout === 'string') {
+                    lastDate = new Date(user.lastWorkout);
+                } else {
+                    lastDate = new Date(user.lastWorkout);
+                }
+                lastDate.setHours(0,0,0,0);
+                
+                const today = new Date();
+                today.setHours(0,0,0,0);
+                
+                const diffTime = today.getTime() - lastDate.getTime();
+                const diffDays = Math.round(diffTime / (1000 * 3600 * 24));
+                
+                if (diffDays > 1) {
+                    streak = 0;
+                }
+            }
+            return streak;
+        };
+
         function Dashboard({ user, onLogClick, leaderboard, currentUserId }) {
+          const displayStreak = calculateEffectiveStreak(user);
+
           return (
             React.createElement('div', { className: "space-y-6 animate-fade-in" }, [
               // Streak Card
-              React.createElement('div', { className: "bg-gradient-to-br from-orange-500 to-red-600 rounded-2xl p-6 text-white shadow-lg relative overflow-hidden", key: 'streak' }, [
+              React.createElement('div', { className: `bg-gradient-to-br ${displayStreak > 0 ? 'from-orange-500 to-red-600' : 'from-slate-700 to-slate-600'} rounded-2xl p-6 text-white shadow-lg relative overflow-hidden`, key: 'streak' }, [
                 React.createElement('div', { className: "absolute right-0 top-0 opacity-20 transform translate-x-4 -translate-y-4" }, React.createElement(Flame, { size: 120 })),
                 React.createElement('div', { className: "relative z-10" }, [
                   React.createElement('div', { className: "text-sm font-medium opacity-90 mb-1" }, "Sequência Atual"),
                   React.createElement('div', { className: "text-4xl font-black flex items-end gap-2" }, [
-                    user.streak || 0,
+                    displayStreak,
                     React.createElement('span', { className: "text-lg font-normal mb-1" }, "dias")
                   ]),
-                  React.createElement('p', { className: "text-xs opacity-75 mt-2" }, "Mantenha a consistência para ganhar bônus de XP!")
+                  React.createElement('p', { className: "text-xs opacity-75 mt-2" }, displayStreak > 0 ? "Mantenha a consistência para ganhar bônus de XP!" : "Registre um treino hoje para iniciar sua sequência!")
                 ])
               ]),
 
@@ -243,6 +279,208 @@
           );
         }
 
+        // --- NEW ADMIN MODAL ---
+        function AdminExerciseModal({ onClose, onSave }) {
+            const [name, setName] = useState('');
+            const [xp, setXp] = useState('100');
+            const [selectedIcon, setSelectedIcon] = useState('Dumbbell');
+            const [color, setColor] = useState('blue');
+
+            const icons = Object.keys(ICON_MAP);
+            const colors = ['blue', 'red', 'green', 'yellow', 'purple', 'pink', 'orange', 'cyan', 'emerald'];
+
+            return React.createElement('div', { className: "fixed inset-0 bg-black/80 flex items-center justify-center z-50 p-4 animate-fade-in" }, [
+                React.createElement('div', { className: "bg-slate-800 rounded-2xl w-full max-w-sm p-6 border border-slate-600 shadow-2xl relative" }, [
+                    React.createElement('button', { onClick: onClose, className: "absolute top-4 right-4 text-slate-400 hover:text-white" }, React.createElement(X)),
+                    React.createElement('h3', { className: "text-xl font-bold text-white mb-4 flex items-center gap-2" }, [
+                        React.createElement(Lock, { size: 20, className: "text-yellow-500" }), " Adicionar Exercício"
+                    ]),
+                    
+                    React.createElement('div', { className: "space-y-4" }, [
+                        React.createElement('div', null, [
+                            React.createElement('label', { className: "text-xs font-bold text-slate-400 uppercase mb-1 block" }, "Nome do Exercício"),
+                            React.createElement('input', { type: "text", value: name, onChange: e => setName(e.target.value), className: "w-full bg-slate-900 border border-slate-700 rounded p-2 text-white outline-none focus:border-yellow-500" })
+                        ]),
+                        React.createElement('div', null, [
+                            React.createElement('label', { className: "text-xs font-bold text-slate-400 uppercase mb-1 block" }, "XP Base"),
+                            React.createElement('input', { type: "number", value: xp, onChange: e => setXp(e.target.value), className: "w-full bg-slate-900 border border-slate-700 rounded p-2 text-white outline-none focus:border-yellow-500" })
+                        ]),
+                        React.createElement('div', null, [
+                            React.createElement('label', { className: "text-xs font-bold text-slate-400 uppercase mb-1 block" }, "Ícone"),
+                            React.createElement('div', { className: "grid grid-cols-5 gap-2 max-h-32 overflow-y-auto custom-scrollbar bg-slate-900 p-2 rounded border border-slate-700" }, 
+                                icons.map(iconName => {
+                                    const IconComp = ICON_MAP[iconName];
+                                    return React.createElement('button', {
+                                        key: iconName,
+                                        onClick: () => setSelectedIcon(iconName),
+                                        className: `p-2 rounded flex justify-center items-center ${selectedIcon === iconName ? 'bg-yellow-500 text-black' : 'text-slate-400 hover:bg-slate-700'}`
+                                    }, React.createElement(IconComp, { size: 18 }));
+                                })
+                            )
+                        ]),
+                        React.createElement('div', null, [
+                            React.createElement('label', { className: "text-xs font-bold text-slate-400 uppercase mb-1 block" }, "Cor"),
+                            React.createElement('div', { className: "flex gap-2 overflow-x-auto pb-2" }, 
+                                colors.map(c => React.createElement('button', {
+                                    key: c,
+                                    onClick: () => setColor(c),
+                                    className: `w-8 h-8 rounded-full border-2 ${color === c ? 'border-white scale-110' : 'border-transparent'} bg-${c}-500`
+                                }))
+                            )
+                        ]),
+                        React.createElement('button', {
+                            onClick: () => {
+                                if(name && xp) {
+                                    onSave({ 
+                                        id: 'custom_' + Date.now(), 
+                                        label: name, 
+                                        xp: parseInt(xp), 
+                                        iconKey: selectedIcon, 
+                                        color: color 
+                                    });
+                                }
+                            },
+                            className: "w-full bg-yellow-600 hover:bg-yellow-500 text-white font-bold py-3 rounded-lg mt-2"
+                        }, "Salvar no App")
+                    ])
+                ])
+            ]);
+        }
+
+        // --- REUSED COMPONENTS ---
+        // (WorkoutLogger, Leaderboard, etc. same structure, just passing 'exercises' prop)
+
+        function WorkoutLogger({ onLog, onCancel, initialData, availableExercises }) {
+          // Fallback to first available exercise if state is invalid
+          const defaultExId = availableExercises && availableExercises.length > 0 ? availableExercises[0].id : '';
+          const [type, setType] = useState(initialData?.workoutType || defaultExId);
+          const [intensity, setIntensity] = useState(initialData?.intensity || 'normal');
+          const [notes, setNotes] = useState(initialData?.notes || '');
+          
+          const getTodayStr = () => {
+              const d = new Date();
+              return d.toISOString().split('T')[0];
+          };
+          
+          const getInitialDateStr = () => {
+              if (initialData?.timestamp) {
+                  let d;
+                  if (initialData.timestamp.seconds) d = new Date(initialData.timestamp.seconds * 1000);
+                  else if (typeof initialData.timestamp === 'string') d = new Date(initialData.timestamp);
+                  else d = new Date();
+                  return d.toISOString().split('T')[0];
+              }
+              return getTodayStr();
+          };
+
+          const [dateStr, setDateStr] = useState(getInitialDateStr());
+
+          return React.createElement('div', { className: "bg-slate-800 rounded-2xl p-6 border border-slate-700 shadow-xl animate-slide-up" }, [
+            React.createElement('div', { className: "flex justify-between items-center mb-6", key: 'header' }, [
+                React.createElement('h2', { className: "text-xl font-bold text-white flex items-center gap-2" }, [
+                  React.createElement(initialData ? Edit2 : CheckCircle2, { className: "text-green-500" }),
+                  initialData ? " Editar Treino" : " Registrar Treino"
+                ]),
+                initialData && React.createElement('button', { onClick: onCancel, className: "text-slate-400 hover:text-white" }, React.createElement(X))
+            ]),
+            React.createElement('div', { className: "space-y-6", key: 'form' }, [
+              React.createElement('div', null, [
+                React.createElement('label', { className: "text-slate-400 text-sm font-medium mb-2 block" }, "Data"),
+                React.createElement('div', { className: "relative" }, [
+                    React.createElement(Calendar, { size: 18, className: "absolute left-3 top-3 text-slate-500" }),
+                    React.createElement('input', {
+                        type: "date",
+                        value: dateStr,
+                        onChange: (e) => setDateStr(e.target.value),
+                        className: "w-full bg-slate-900 border border-slate-700 rounded-lg p-2 pl-10 text-white text-sm focus:border-blue-500 outline-none"
+                    })
+                ])
+              ]),
+
+              React.createElement('div', null, [
+                React.createElement('label', { className: "text-slate-400 text-sm font-medium mb-2 block" }, "Selecione o Treino"),
+                React.createElement('div', { className: "grid grid-cols-3 gap-2 max-h-60 overflow-y-auto custom-scrollbar pr-1" }, 
+                  availableExercises.map(opt => {
+                      const IconComp = ICON_MAP[opt.iconKey] || Dumbbell; // Dynamic Icon
+                      return React.createElement('button', {
+                        key: opt.id,
+                        onClick: () => setType(opt.id),
+                        className: `p-2 rounded-xl border-2 flex flex-col items-center gap-1 transition-all min-h-[80px] justify-center ${type === opt.id ? `border-${opt.color}-500 bg-${opt.color}-500/20 text-${opt.color}-400` : 'border-slate-700 bg-slate-700/50 text-slate-400 hover:border-slate-600'}`
+                      }, [
+                        React.createElement(IconComp, { size: 24 }),
+                        React.createElement('span', { className: "font-bold text-[10px] text-center leading-tight" }, opt.label),
+                        React.createElement('span', { className: "text-[9px] opacity-60" }, `+${opt.xp}xp`)
+                      ]);
+                  })
+                )
+              ]),
+              React.createElement('div', null, [
+                React.createElement('label', { className: "text-slate-400 text-sm font-medium mb-2 block" }, "Intensidade"),
+                React.createElement('div', { className: "flex bg-slate-700 rounded-lg p-1" }, [
+                  React.createElement('button', {
+                    onClick: () => setIntensity('normal'),
+                    className: `flex-1 py-2 rounded-md text-sm font-medium transition-colors ${intensity === 'normal' ? 'bg-slate-600 text-white shadow' : 'text-slate-400'}`
+                  }, "Normal (1x)"),
+                  React.createElement('button', {
+                    onClick: () => setIntensity('high'),
+                    className: `flex-1 py-2 rounded-md text-sm font-medium transition-colors ${intensity === 'high' ? 'bg-red-500/20 text-red-400 shadow' : 'text-slate-400'}`
+                  }, "Intenso 🔥")
+                ])
+              ]),
+              React.createElement('div', null, [
+                React.createElement('label', { className: "text-slate-400 text-sm font-medium mb-2 block" }, "Notas (Opcional)"),
+                React.createElement('textarea', {
+                  value: notes,
+                  onChange: (e) => setNotes(e.target.value),
+                  className: "w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-sm focus:border-blue-500 outline-none",
+                  rows: 3
+                })
+              ]),
+              React.createElement('div', { className: "flex gap-3 pt-4" }, [
+                !initialData && React.createElement('button', { onClick: onCancel, className: "flex-1 py-3 rounded-lg font-medium text-slate-400 hover:bg-slate-700 transition-colors" }, "Cancelar"),
+                React.createElement('button', { 
+                    onClick: () => onLog(type, intensity, notes, dateStr), 
+                    className: "flex-1 bg-green-600 hover:bg-green-500 py-3 rounded-lg font-bold text-white shadow-lg transition-colors" 
+                }, initialData ? "Salvar Alterações" : "Confirmar")
+              ])
+            ])
+          ]);
+        }
+
+        function Leaderboard({ users, currentUserId }) {
+           return React.createElement('div', { className: "space-y-4" }, [
+             React.createElement('h2', { className: "text-xl font-bold text-white mb-4 flex items-center gap-2", key: 'title' }, [
+               React.createElement(Trophy, { className: "text-yellow-500" }),
+               " Ranking Global"
+             ]),
+             React.createElement('div', { className: "space-y-2", key: 'list' }, 
+               users.map((u, index) => {
+                 // --- CORREÇÃO DE STREAK NO RANKING ---
+                 // Calcula o streak real de cada usuário para exibir a chama correta
+                 const realStreak = calculateEffectiveStreak(u);
+                 
+                 return React.createElement('div', { 
+                   key: u.id || index,
+                   className: `flex items-center gap-4 p-3 rounded-xl border ${u.id === currentUserId ? 'bg-blue-900/30 border-blue-500/50' : 'bg-slate-800 border-slate-700'}`
+                 }, [
+                   React.createElement('div', { className: "flex-shrink-0 w-8 text-center font-bold text-slate-500" }, `#${index + 1}`),
+                   React.createElement('div', { className: "h-10 w-10 rounded-full bg-slate-700 flex items-center justify-center text-xl" }, u.avatar),
+                   React.createElement('div', { className: "flex-1 min-w-0" }, [
+                     React.createElement('div', { className: "font-bold text-white truncate" }, u.username),
+                     // Exibe o 'realStreak' calculado, não apenas o do banco
+                     React.createElement('div', { className: "text-xs text-slate-400 flex items-center gap-1" }, [
+                         `Lvl ${getLevel(u.xp || 0)} • `,
+                         React.createElement('span', { className: realStreak > 0 ? "text-orange-400 font-bold" : "text-slate-600" }, `${realStreak} dias 🔥`)
+                     ])
+                   ]),
+                   React.createElement('div', { className: "font-mono font-bold text-orange-400" }, `${u.xp || 0} XP`)
+                 ]);
+               })
+             )
+           ]);
+        }
+
+        // Reuse existing components...
         function ChallengeList({ challenges, users, currentUserId, onCreateChallenge, onClaimWin }) {
           const [isCreating, setIsCreating] = useState(false);
           const [newTitle, setNewTitle] = useState('');
@@ -323,6 +561,7 @@
                                          style: { width: `${percentage}%` } 
                                      })
                                  ),
+                                 // Botão de Reivindicar (se 100% e não finalizado)
                                  (!isWinner && percentage >= 100 && u.id === currentUserId) && 
                                  React.createElement('button', {
                                      onClick: () => onClaimWin(challenge.id),
@@ -337,131 +576,7 @@
           ]);
         }
 
-        function WorkoutLogger({ onLog, onCancel, initialData }) {
-          const [type, setType] = useState(initialData?.workoutType || EXERCISES[0].id);
-          const [intensity, setIntensity] = useState(initialData?.intensity || 'normal');
-          const [notes, setNotes] = useState(initialData?.notes || '');
-          
-          // Get today in YYYY-MM-DD format for input
-          const getTodayStr = () => {
-              const d = new Date();
-              return d.toISOString().split('T')[0];
-          };
-          
-          // If editing, convert timestamp to YYYY-MM-DD
-          const getInitialDateStr = () => {
-              if (initialData?.timestamp) {
-                  let d;
-                  if (initialData.timestamp.seconds) d = new Date(initialData.timestamp.seconds * 1000);
-                  else if (typeof initialData.timestamp === 'string') d = new Date(initialData.timestamp);
-                  else d = new Date();
-                  return d.toISOString().split('T')[0];
-              }
-              return getTodayStr();
-          };
-
-          const [dateStr, setDateStr] = useState(getInitialDateStr());
-
-          return React.createElement('div', { className: "bg-slate-800 rounded-2xl p-6 border border-slate-700 shadow-xl animate-slide-up" }, [
-            React.createElement('div', { className: "flex justify-between items-center mb-6", key: 'header' }, [
-                React.createElement('h2', { className: "text-xl font-bold text-white flex items-center gap-2" }, [
-                  React.createElement(initialData ? Edit2 : CheckCircle2, { className: "text-green-500" }),
-                  initialData ? " Editar Treino" : " Registrar Treino"
-                ]),
-                initialData && React.createElement('button', { onClick: onCancel, className: "text-slate-400 hover:text-white" }, React.createElement(X))
-            ]),
-            React.createElement('div', { className: "space-y-6", key: 'form' }, [
-              // Date Input
-              React.createElement('div', null, [
-                React.createElement('label', { className: "text-slate-400 text-sm font-medium mb-2 block" }, "Data"),
-                React.createElement('div', { className: "relative" }, [
-                    React.createElement(Calendar, { size: 18, className: "absolute left-3 top-3 text-slate-500" }),
-                    React.createElement('input', {
-                        type: "date",
-                        value: dateStr,
-                        onChange: (e) => setDateStr(e.target.value),
-                        className: "w-full bg-slate-900 border border-slate-700 rounded-lg p-2 pl-10 text-white text-sm focus:border-blue-500 outline-none"
-                    })
-                ])
-              ]),
-
-              // Type Grid
-              React.createElement('div', null, [
-                React.createElement('label', { className: "text-slate-400 text-sm font-medium mb-2 block" }, "Selecione o Treino"),
-                React.createElement('div', { className: "grid grid-cols-3 gap-2 max-h-60 overflow-y-auto custom-scrollbar pr-1" }, 
-                  EXERCISES.map(opt => React.createElement('button', {
-                    key: opt.id,
-                    onClick: () => setType(opt.id),
-                    className: `p-2 rounded-xl border-2 flex flex-col items-center gap-1 transition-all min-h-[80px] justify-center ${type === opt.id ? `border-${opt.color}-500 bg-${opt.color}-500/20 text-${opt.color}-400` : 'border-slate-700 bg-slate-700/50 text-slate-400 hover:border-slate-600'}`
-                  }, [
-                    React.createElement(opt.icon, { size: 24 }),
-                    React.createElement('span', { className: "font-bold text-[10px] text-center leading-tight" }, opt.label),
-                    React.createElement('span', { className: "text-[9px] opacity-60" }, `+${opt.xp}xp`)
-                  ]))
-                )
-              ]),
-              // Intensity
-              React.createElement('div', null, [
-                React.createElement('label', { className: "text-slate-400 text-sm font-medium mb-2 block" }, "Intensidade"),
-                React.createElement('div', { className: "flex bg-slate-700 rounded-lg p-1" }, [
-                  React.createElement('button', {
-                    onClick: () => setIntensity('normal'),
-                    className: `flex-1 py-2 rounded-md text-sm font-medium transition-colors ${intensity === 'normal' ? 'bg-slate-600 text-white shadow' : 'text-slate-400'}`
-                  }, "Normal (1x)"),
-                  React.createElement('button', {
-                    onClick: () => setIntensity('high'),
-                    className: `flex-1 py-2 rounded-md text-sm font-medium transition-colors ${intensity === 'high' ? 'bg-red-500/20 text-red-400 shadow' : 'text-slate-400'}`
-                  }, "Intenso 🔥")
-                ])
-              ]),
-              // Notes
-              React.createElement('div', null, [
-                React.createElement('label', { className: "text-slate-400 text-sm font-medium mb-2 block" }, "Notas (Opcional)"),
-                React.createElement('textarea', {
-                  value: notes,
-                  onChange: (e) => setNotes(e.target.value),
-                  className: "w-full bg-slate-900 border border-slate-700 rounded-lg p-3 text-white text-sm focus:border-blue-500 outline-none",
-                  rows: 3
-                })
-              ]),
-              // Buttons
-              React.createElement('div', { className: "flex gap-3 pt-4" }, [
-                !initialData && React.createElement('button', { onClick: onCancel, className: "flex-1 py-3 rounded-lg font-medium text-slate-400 hover:bg-slate-700 transition-colors" }, "Cancelar"),
-                React.createElement('button', { 
-                    onClick: () => onLog(type, intensity, notes, dateStr), // Pass date
-                    className: "flex-1 bg-green-600 hover:bg-green-500 py-3 rounded-lg font-bold text-white shadow-lg transition-colors" 
-                }, initialData ? "Salvar Alterações" : "Confirmar")
-              ])
-            ])
-          ]);
-        }
-
-        function Leaderboard({ users, currentUserId }) {
-           return React.createElement('div', { className: "space-y-4" }, [
-             React.createElement('h2', { className: "text-xl font-bold text-white mb-4 flex items-center gap-2", key: 'title' }, [
-               React.createElement(Trophy, { className: "text-yellow-500" }),
-               " Ranking Global"
-             ]),
-             React.createElement('div', { className: "space-y-2", key: 'list' }, 
-               users.map((u, index) => 
-                 React.createElement('div', { 
-                   key: u.id || index,
-                   className: `flex items-center gap-4 p-3 rounded-xl border ${u.id === currentUserId ? 'bg-blue-900/30 border-blue-500/50' : 'bg-slate-800 border-slate-700'}`
-                 }, [
-                   React.createElement('div', { className: "flex-shrink-0 w-8 text-center font-bold text-slate-500" }, `#${index + 1}`),
-                   React.createElement('div', { className: "h-10 w-10 rounded-full bg-slate-700 flex items-center justify-center text-xl" }, u.avatar),
-                   React.createElement('div', { className: "flex-1 min-w-0" }, [
-                     React.createElement('div', { className: "font-bold text-white truncate" }, u.username),
-                     React.createElement('div', { className: "text-xs text-slate-400" }, `Lvl ${getLevel(u.xp || 0)} • ${u.streak || 0} dias 🔥`)
-                   ]),
-                   React.createElement('div', { className: "font-mono font-bold text-orange-400" }, `${u.xp || 0} XP`)
-                 ])
-               )
-             )
-           ]);
-        }
-        
-        function RewardShop({ user, onAdd, onRedeem, onDelete }) { // Updated to accept onDelete
+        function RewardShop({ user, onAdd, onRedeem, onDelete }) { 
           const [isAdding, setIsAdding] = useState(false);
           const [newTitle, setNewTitle] = useState('');
           const [newCost, setNewCost] = useState('');
@@ -492,13 +607,13 @@
             React.createElement('div', { className: "grid gap-3", key: 'rewards-list' }, 
               activeRewards.map(reward => {
                 const percentage = Math.min((currentCoins / reward.cost) * 100, 100);
-                return React.createElement('div', { key: reward.id, className: "bg-slate-800 p-4 rounded-xl border border-slate-700 relative" }, [ // Relative for positioning
+                return React.createElement('div', { key: reward.id, className: "bg-slate-800 p-4 rounded-xl border border-slate-700 relative" }, [ 
                   React.createElement('div', { className: "flex justify-between items-start mb-3" }, [
                      React.createElement('div', null, [
                        React.createElement('div', { className: "font-bold text-white" }, reward.title),
                        React.createElement('div', { className: "text-xs text-slate-400 mt-1" }, `Meta: ${reward.cost} moedas`)
                      ]),
-                     React.createElement('div', { className: "flex items-center gap-2" }, [ // Container for buttons
+                     React.createElement('div', { className: "flex items-center gap-2" }, [ 
                         React.createElement('button', {
                             onClick: () => {
                                 if (confirm("Tem certeza que deseja excluir esta recompensa?")) {
@@ -537,8 +652,7 @@
                     React.createElement('div', { className: "flex items-center gap-2 mb-1" }, [
                       React.createElement('span', { className: "text-lg" }, item.userAvatar),
                       React.createElement('span', { className: "font-bold text-slate-200" }, item.userName),
-                      React.createElement('span', { className: "text-xs text-slate-500 ml-auto" }, formatDate(item.timestamp)), // New Date Format
-                      // Edit Button for owner (only workouts)
+                      React.createElement('span', { className: "text-xs text-slate-500 ml-auto" }, formatDate(item.timestamp)), 
                       (item.userId === currentUserId && item.type === 'workout' && onEdit) &&
                       React.createElement('button', {
                           onClick: () => onEdit(item),
@@ -624,17 +738,19 @@
           const [challenges, setChallenges] = useState([]);
           const [feed, setFeed] = useState([]);
           const [offlineMode, setOfflineMode] = useState(false);
-          const [editingItem, setEditingItem] = useState(null); // State for editing
+          const [editingItem, setEditingItem] = useState(null); 
+          const [exercises, setExercises] = useState(DEFAULT_EXERCISES); // Dynamic exercises state
+          const [showAdmin, setShowAdmin] = useState(false); // Admin modal
 
           const connectFirebase = async () => {
              try { 
-                 setOfflineMode(false); // Reset to try online
+                 setOfflineMode(false); 
                  await signInAnonymously(auth); 
                  setFirebaseConnected(true);
              } catch (error) { 
                  console.error("Firebase connection error (likely Auth not enabled):", error);
                  setOfflineMode(true); 
-                 alert("Não foi possível conectar ao servidor. O app funcionará offline. Verifique se a Autenticação Anônima está ativada no Firebase.");
+                 alert("Não foi possível conectar ao servidor. O app funcionará offline.");
              }
           };
 
@@ -646,7 +762,7 @@
             return () => unsubscribe();
           }, []);
 
-          // Data Refresh Logic (Handles both Online and Offline Updates)
+          // Data Refresh Logic 
           const refreshData = async () => {
              if (offlineMode) {
                  if(activeGameUser) {
@@ -659,6 +775,10 @@
                  setLeaderboard(users);
                  setFeed(LocalDB.getFeed());
                  setChallenges(LocalDB.getChallenges());
+                 
+                 // Merge default with custom exercises
+                 const customEx = LocalDB.getCustomExercises();
+                 setExercises([...DEFAULT_EXERCISES, ...customEx]);
              }
           };
 
@@ -677,9 +797,8 @@
                     if (docSnap.exists()) setActiveGameUser({ id: docSnap.id, ...docSnap.data() });
                 },
                 (err) => {
-                    console.warn("Permission Error (User): Switching to Offline Mode", err);
                     setOfflineMode(true);
-                    alert("Erro de Permissão do Banco de Dados. Mudando para Offline.");
+                    alert("Erro de Permissão. Mudando para Offline.");
                 }
             );
 
@@ -692,10 +811,7 @@
                     users.sort((a, b) => (b.xp || 0) - (a.xp || 0));
                     setLeaderboard(users);
                 },
-                (err) => {
-                    console.warn("Permission Error (Leaderboard): Switching to Offline Mode", err);
-                    setOfflineMode(true);
-                }
+                (err) => { setOfflineMode(true); }
             );
 
             // Feed Listener
@@ -707,9 +823,7 @@
                     activities.sort((a, b) => (b.timestamp?.seconds || 0) - (a.timestamp?.seconds || 0));
                     setFeed(activities.slice(0, 20));
                 },
-                (err) => {
-                     setOfflineMode(true);
-                }
+                (err) => { setOfflineMode(true); }
             );
 
             // Challenges Listener
@@ -718,19 +832,30 @@
                 (snapshot) => {
                     const ch = [];
                     snapshot.forEach(doc => ch.push({ id: doc.id, ...doc.data() }));
-                    // Sort active first? Or newest first
                     ch.sort((a, b) => (b.createdAt?.seconds || 0) - (a.createdAt?.seconds || 0));
                     setChallenges(ch);
                 }
             );
 
-            return () => { unsubUser(); unsubLeaderboard(); unsubFeed(); unsubChallenges(); };
+            // Exercises Listener (Load custom exercises)
+            const exercisesRef = collection(db, EXERCISES_COLLECTION_NAME);
+            const unsubExercises = onSnapshot(exercisesRef, 
+                (snapshot) => {
+                    const customEx = [];
+                    snapshot.forEach(doc => customEx.push({ id: doc.id, ...doc.data() }));
+                    setExercises([...DEFAULT_EXERCISES, ...customEx]);
+                }
+            );
+
+            return () => { unsubUser(); unsubLeaderboard(); unsubFeed(); unsubChallenges(); unsubExercises(); };
           }, [firebaseConnected, activeGameUser?.id, offlineMode]);
 
-          // Actions
+          // ... (Rest of actions: handleRegister, handleLogin, etc.) ...
+          // IMPORTANT: Re-implementing Login/Register etc to use updated code context if needed, but keeping existing logic is fine.
+          // Copying logic from previous blocks to ensure full functionality.
+
           const handleRegister = async (username, pin, avatar) => {
             const newUser = { username, pin, avatar, xp: 0, coins: 0, streak: 0, workoutsCompleted: 0, joinedAt: offlineMode ? Date.now() : serverTimestamp(), myRewards: [] };
-            
             if (offlineMode) {
                 const users = LocalDB.getUsers();
                 if(users.some(u => u.username === username)) { alert("Usuário existe (Local)."); return; }
@@ -740,27 +865,16 @@
                 refreshData();
                 return;
             }
-
             try {
                 const usersRef = collection(db, COLLECTION_NAME);
                 const q = query(usersRef, where("username", "==", username));
                 const snapshot = await getDocs(q);
                 if (!snapshot.empty) { alert("Este nome de usuário já existe."); return; }
-
                 const docRef = await addDoc(usersRef, newUser);
                 setActiveGameUser({ id: docRef.id, ...newUser });
             } catch (err) {
-                console.error("Register Error:", err);
-                if(err.code === 'permission-denied') {
-                    alert("Erro de permissão no Firebase. As regras do banco estão bloqueadas. Mudando para modo Offline.");
-                    setOfflineMode(true);
-                    newUser.id = "local_" + Date.now();
-                    LocalDB.saveUser(newUser);
-                    setActiveGameUser(newUser);
-                    refreshData();
-                } else {
-                    alert("Erro ao conectar: " + err.message);
-                }
+                if(err.code === 'permission-denied') { setOfflineMode(true); newUser.id = "local_" + Date.now(); LocalDB.saveUser(newUser); setActiveGameUser(newUser); refreshData(); } 
+                else { alert("Erro ao conectar."); }
             }
           };
 
@@ -768,279 +882,171 @@
             if (offlineMode) {
                 const users = LocalDB.getUsers();
                 const user = users.find(u => u.username === username && u.pin === pin);
-                if (user) {
-                    setActiveGameUser(user);
-                    refreshData();
-                } else { alert("Login inválido (Offline)."); }
+                if (user) { setActiveGameUser(user); refreshData(); } else { alert("Login inválido (Offline)."); }
                 return;
             }
-
             try {
                 const usersRef = collection(db, COLLECTION_NAME);
                 const q = query(usersRef, where("username", "==", username), where("pin", "==", pin));
                 const snapshot = await getDocs(q);
-
-                if (!snapshot.empty) {
-                  const userDoc = snapshot.docs[0];
-                  setActiveGameUser({ id: userDoc.id, ...userDoc.data() });
-                } else { alert("Usuário ou PIN incorretos."); }
+                if (!snapshot.empty) { const userDoc = snapshot.docs[0]; setActiveGameUser({ id: userDoc.id, ...userDoc.data() }); } 
+                else { alert("Usuário ou PIN incorretos."); }
             } catch (err) {
-                 console.error("Login Error:", err);
-                 if(err.code === 'permission-denied') {
-                    setOfflineMode(true);
-                    alert("Erro de permissão no Firebase. Tentando login local...");
-                    const users = LocalDB.getUsers();
-                    const user = users.find(u => u.username === username && u.pin === pin);
-                    if (user) setActiveGameUser(user);
-                 } else {
-                     alert("Erro ao logar: " + err.message);
-                 }
+                 if(err.code === 'permission-denied') { setOfflineMode(true); alert("Erro de permissão. Tentando login local..."); const users = LocalDB.getUsers(); const user = users.find(u => u.username === username && u.pin === pin); if (user) setActiveGameUser(user); }
+                 else { alert("Erro ao logar."); }
             }
           };
 
           const handleLogout = () => { setActiveGameUser(null); };
 
-          const handleLogWorkout = async (typeId, intensity, notes, dateStr) => { // Added dateStr param
+          const handleLogWorkout = async (typeId, intensity, notes, dateStr) => {
             if (!activeGameUser) return;
             
-            // Convert date string from input to Timestamp object (or ms for offline)
             let timestamp;
+            let currentWorkoutDate = new Date();
             if (dateStr) {
                 const parts = dateStr.split('-');
-                // Create date at noon to avoid timezone issues shifting the day
                 const d = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0); 
                 timestamp = offlineMode ? { seconds: d.getTime() / 1000 } : d; 
+                currentWorkoutDate = new Date(parts[0], parts[1] - 1, parts[2]);
             } else {
                 timestamp = offlineMode ? { seconds: Date.now() / 1000 } : serverTimestamp();
             }
+            currentWorkoutDate.setHours(0,0,0,0);
 
-            const exercise = EXERCISES.find(e => e.id === typeId) || EXERCISES[0];
-            let baseXp = exercise.xp;
-            let earnedXp = baseXp; 
+            // USE DYNAMIC EXERCISES LIST
+            const exercise = exercises.find(e => e.id === typeId) || exercises[0];
+            let earnedXp = exercise.xp; 
             const earnedCoins = Math.floor(earnedXp / 10);
 
-            // --- EDIT MODE LOGIC ---
+            // Edit Mode
             if (editingItem) {
-                const diffXp = earnedXp - editingItem.xpGained; // New - Old
-                // Coins diff handled roughly proportional
+                const diffXp = earnedXp - editingItem.xpGained;
                 const diffCoins = earnedCoins - Math.floor(editingItem.xpGained / 10);
-
-                const updatedItem = {
-                    ...editingItem,
-                    workoutType: typeId,
-                    workoutLabel: exercise.label,
-                    xpGained: earnedXp,
-                    notes: notes,
-                    intensity: intensity,
-                    timestamp: timestamp
-                };
+                const updatedItem = { ...editingItem, workoutType: typeId, workoutLabel: exercise.label, xpGained: earnedXp, notes: notes, intensity: intensity, timestamp: timestamp };
 
                 if (offlineMode) {
-                    const updatedUser = {
-                        ...activeGameUser,
-                        xp: (activeGameUser.xp || 0) + diffXp,
-                        coins: (activeGameUser.coins || 0) + diffCoins,
-                    };
-                    LocalDB.saveUser(updatedUser);
-                    LocalDB.updateFeedItem(updatedItem);
-                    setActiveGameUser(updatedUser);
-                    setEditingItem(null);
-                    refreshData();
-                    alert("Atividade atualizada!");
-                    return;
+                    const updatedUser = { ...activeGameUser, xp: (activeGameUser.xp || 0) + diffXp, coins: (activeGameUser.coins || 0) + diffCoins };
+                    LocalDB.saveUser(updatedUser); LocalDB.updateFeedItem(updatedItem); setActiveGameUser(updatedUser); setEditingItem(null); refreshData(); alert("Atualizado!"); return;
                 }
-
                 try {
                     const userRef = doc(db, COLLECTION_NAME, activeGameUser.id);
-                    await updateDoc(userRef, {
-                        xp: increment(diffXp),
-                        coins: increment(diffCoins)
-                    });
+                    await updateDoc(userRef, { xp: increment(diffXp), coins: increment(diffCoins) });
                     const feedRef = doc(db, FEED_COLLECTION_NAME, editingItem.id);
                     await updateDoc(feedRef, updatedItem);
-                    setEditingItem(null);
-                    alert("Atividade atualizada!");
-                } catch (err) {
-                    console.error(err);
-                    alert("Erro ao editar atividade.");
-                }
+                    setEditingItem(null); alert("Atualizado!");
+                } catch (err) { alert("Erro ao editar."); }
                 return;
             }
-            // --- END EDIT LOGIC ---
             
-            // Standard Log Logic
-            let newStreak = (activeGameUser.streak || 0) + 1; // Simplified streak for now
+            // Streak Logic
+            let newStreak = activeGameUser.streak || 0;
+            let lastWorkoutDate = null;
+            if (activeGameUser.lastWorkout) {
+                if (activeGameUser.lastWorkout.seconds) lastWorkoutDate = new Date(activeGameUser.lastWorkout.seconds * 1000);
+                else if (typeof activeGameUser.lastWorkout === 'string') lastWorkoutDate = new Date(activeGameUser.lastWorkout);
+                else lastWorkoutDate = new Date(activeGameUser.lastWorkout);
+                lastWorkoutDate.setHours(0,0,0,0);
+            }
+
+            if (!lastWorkoutDate) newStreak = 1;
+            else {
+                const diffTime = currentWorkoutDate.getTime() - lastWorkoutDate.getTime();
+                const diffDays = Math.round(diffTime / (1000 * 3600 * 24));
+                if (diffDays === 1) newStreak += 1;
+                else if (diffDays > 1) newStreak = 1;
+                else if (diffDays === 0 && newStreak === 0) newStreak = 1;
+            }
             
-            const feedItem = { 
-              userId: activeGameUser.id, userName: activeGameUser.username, userAvatar: activeGameUser.avatar, 
-              type: 'workout', workoutType: typeId, workoutLabel: exercise.label, xpGained: earnedXp, timestamp: timestamp, notes: notes || '',
-              intensity: intensity 
-            };
+            const feedItem = { userId: activeGameUser.id, userName: activeGameUser.username, userAvatar: activeGameUser.avatar, type: 'workout', workoutType: typeId, workoutLabel: exercise.label, xpGained: earnedXp, timestamp: timestamp, notes: notes || '', intensity: intensity };
 
             if (offlineMode) {
-                const updatedUser = { 
-                    ...activeGameUser, 
-                    xp: (activeGameUser.xp || 0) + earnedXp, 
-                    coins: (activeGameUser.coins || 0) + earnedCoins, 
-                    streak: newStreak,
-                    workoutsCompleted: (activeGameUser.workoutsCompleted || 0) + 1
-                };
-                LocalDB.saveUser(updatedUser);
-                LocalDB.addToFeed(feedItem);
-                setActiveGameUser(updatedUser);
-                refreshData();
-                alert(`Treino de ${exercise.label} Registrado! +${earnedXp} XP`);
-                setActiveTab('dashboard');
-                return;
+                const updatedUser = { ...activeGameUser, xp: (activeGameUser.xp || 0) + earnedXp, coins: (activeGameUser.coins || 0) + earnedCoins, streak: newStreak, workoutsCompleted: (activeGameUser.workoutsCompleted || 0) + 1, lastWorkout: timestamp };
+                LocalDB.saveUser(updatedUser); LocalDB.addToFeed(feedItem); setActiveGameUser(updatedUser); refreshData(); alert(`Registrado! +${earnedXp} XP`); setActiveTab('dashboard'); return;
             }
 
             try {
                 const userRef = doc(db, COLLECTION_NAME, activeGameUser.id);
-                await updateDoc(userRef, { 
-                    xp: increment(earnedXp), 
-                    coins: increment(earnedCoins), 
-                    streak: newStreak, 
-                    workoutsCompleted: increment(1),
-                    lastWorkout: timestamp 
-                });
+                await updateDoc(userRef, { xp: increment(earnedXp), coins: increment(earnedCoins), streak: newStreak, workoutsCompleted: increment(1), lastWorkout: timestamp });
                 const feedRef = collection(db, FEED_COLLECTION_NAME);
                 await addDoc(feedRef, feedItem);
-                alert(`Treino de ${exercise.label} Registrado! +${earnedXp} XP`);
-                setActiveTab('dashboard');
-            } catch (err) {
-                 console.error(err);
-                 setOfflineMode(true); 
-                 alert("Erro de conexão. Mudando para offline.");
-            }
+                alert(`Registrado! +${earnedXp} XP`); setActiveTab('dashboard');
+            } catch (err) { setOfflineMode(true); alert("Erro de conexão. Mudando para offline."); }
           };
 
+          // ... (Existing helper functions: handleCreateChallenge, handleClaimWin, handleAddReward, handleRedeemReward, handleDeleteReward) ...
+          // Re-declaring for scope completeness
           const handleCreateChallenge = async (title, targetXP, prize) => {
-             const baselines = {};
-             leaderboard.forEach(u => {
-                 baselines[u.id] = u.xp || 0;
-             });
-
-             const newChallenge = {
-                 id: "ch_" + Date.now(),
-                 title,
-                 targetXP,
-                 prize,
-                 winnerId: null,
-                 createdAt: offlineMode ? Date.now() : serverTimestamp(),
-                 createdBy: activeGameUser.id,
-                 baselines
-             };
-
-             if (offlineMode) {
-                 LocalDB.saveChallenge(newChallenge);
-                 refreshData();
-                 return;
-             }
-
-             try {
-                 const challengesRef = collection(db, CHALLENGES_COLLECTION_NAME);
-                 await addDoc(challengesRef, newChallenge);
-             } catch(err) { alert("Erro ao criar desafio."); }
+             const baselines = {}; leaderboard.forEach(u => { baselines[u.id] = u.xp || 0; });
+             const newChallenge = { id: "ch_" + Date.now(), title, targetXP, prize, winnerId: null, createdAt: offlineMode ? Date.now() : serverTimestamp(), createdBy: activeGameUser.id, baselines };
+             if (offlineMode) { LocalDB.saveChallenge(newChallenge); refreshData(); return; }
+             try { await addDoc(collection(db, CHALLENGES_COLLECTION_NAME), newChallenge); } catch(err) { alert("Erro ao criar desafio."); }
           };
-
           const handleClaimWin = async (challengeId) => {
-             const challenge = challenges.find(c => c.id === challengeId);
-             if(!challenge || challenge.winnerId) return;
-
-             const feedItem = {
-               userId: activeGameUser.id, userName: activeGameUser.username, userAvatar: activeGameUser.avatar,
-               type: 'win', challengeTitle: challenge.title, timestamp: { seconds: Date.now() / 1000 }
-             };
-
-             if(offlineMode) {
-                const updatedChallenge = { ...challenge, winnerId: activeGameUser.id };
-                LocalDB.saveChallenge(updatedChallenge);
-                LocalDB.addToFeed(feedItem);
-                refreshData();
-                alert("Parabéns! Você venceu o desafio!");
-                return;
-             }
-
-             try {
-                 const chRef = doc(db, CHALLENGES_COLLECTION_NAME, challenge.id); 
-                 await updateDoc(chRef, { winnerId: activeGameUser.id });
-                 
-                 const feedRef = collection(db, FEED_COLLECTION_NAME);
-                 await addDoc(feedRef, { ...feedItem, timestamp: serverTimestamp() });
-                 alert("Parabéns! Você venceu o desafio!");
-             } catch(err) { console.error(err); }
+             const challenge = challenges.find(c => c.id === challengeId); if(!challenge || challenge.winnerId) return;
+             const feedItem = { userId: activeGameUser.id, userName: activeGameUser.username, userAvatar: activeGameUser.avatar, type: 'win', challengeTitle: challenge.title, timestamp: { seconds: Date.now() / 1000 } };
+             if(offlineMode) { LocalDB.saveChallenge({ ...challenge, winnerId: activeGameUser.id }); LocalDB.addToFeed(feedItem); refreshData(); alert("Venceu!"); return; }
+             try { await updateDoc(doc(db, CHALLENGES_COLLECTION_NAME, challenge.id), { winnerId: activeGameUser.id }); await addDoc(collection(db, FEED_COLLECTION_NAME), { ...feedItem, timestamp: serverTimestamp() }); alert("Venceu!"); } catch(err) {}
           };
-
           const handleAddReward = async (title, cost) => {
              const newReward = { id: Date.now().toString(), title, cost: parseInt(cost), redeemed: false };
-             
-             if (offlineMode) {
-                 const updatedUser = { ...activeGameUser, myRewards: [...(activeGameUser.myRewards || []), newReward] };
-                 LocalDB.saveUser(updatedUser);
-                 setActiveGameUser(updatedUser);
-                 return;
-             }
-
-             try {
-                 const userRef = doc(db, COLLECTION_NAME, activeGameUser.id);
-                 await updateDoc(userRef, { myRewards: [...(activeGameUser.myRewards || []), newReward] });
-             } catch(err) { setOfflineMode(true); alert("Erro de conexão. Mudando para offline."); }
+             if (offlineMode) { LocalDB.saveUser({ ...activeGameUser, myRewards: [...(activeGameUser.myRewards || []), newReward] }); setActiveGameUser({ ...activeGameUser, myRewards: [...(activeGameUser.myRewards || []), newReward] }); return; }
+             try { await updateDoc(doc(db, COLLECTION_NAME, activeGameUser.id), { myRewards: [...(activeGameUser.myRewards || []), newReward] }); } catch(err) { setOfflineMode(true); }
           };
-
           const handleRedeemReward = async (rewardId, cost) => {
              const updatedRewards = activeGameUser.myRewards.map(r => r.id === rewardId ? { ...r, redeemed: true } : r);
              const rewardTitle = activeGameUser.myRewards.find(r => r.id === rewardId)?.title;
-             const feedItem = { 
-               userId: activeGameUser.id, userName: activeGameUser.username, userAvatar: activeGameUser.avatar, 
-               type: 'reward', rewardTitle: rewardTitle, timestamp: { seconds: Date.now() / 1000 }
-             };
-
-             if (offlineMode) {
-                 const updatedUser = { 
-                     ...activeGameUser, 
-                     coins: (activeGameUser.coins || 0) - cost,
-                     myRewards: updatedRewards 
-                 };
-                 LocalDB.saveUser(updatedUser);
-                 LocalDB.addToFeed(feedItem);
-                 setActiveGameUser(updatedUser);
-                 refreshData();
-                 return;
-             }
-
-             try {
-                const userRef = doc(db, COLLECTION_NAME, activeGameUser.id);
-                await updateDoc(userRef, { coins: increment(-cost), myRewards: updatedRewards });
-                const feedRef = collection(db, FEED_COLLECTION_NAME);
-                await addDoc(feedRef, { ...feedItem, timestamp: serverTimestamp() });
-             } catch(err) { setOfflineMode(true); alert("Erro de conexão. Mudando para offline."); }
+             const feedItem = { userId: activeGameUser.id, userName: activeGameUser.username, userAvatar: activeGameUser.avatar, type: 'reward', rewardTitle: rewardTitle, timestamp: { seconds: Date.now() / 1000 } };
+             if (offlineMode) { LocalDB.saveUser({ ...activeGameUser, coins: (activeGameUser.coins || 0) - cost, myRewards: updatedRewards }); LocalDB.addToFeed(feedItem); setActiveGameUser({ ...activeGameUser, coins: (activeGameUser.coins || 0) - cost, myRewards: updatedRewards }); refreshData(); return; }
+             try { await updateDoc(doc(db, COLLECTION_NAME, activeGameUser.id), { coins: increment(-cost), myRewards: updatedRewards }); await addDoc(collection(db, FEED_COLLECTION_NAME), { ...feedItem, timestamp: serverTimestamp() }); } catch(err) { setOfflineMode(true); }
           };
-
           const handleDeleteReward = async (rewardId) => {
              if (!activeGameUser) return;
              const updatedRewards = activeGameUser.myRewards.filter(r => r.id !== rewardId);
+             if (offlineMode) { LocalDB.saveUser({ ...activeGameUser, myRewards: updatedRewards }); setActiveGameUser({ ...activeGameUser, myRewards: updatedRewards }); return; }
+             try { await updateDoc(doc(db, COLLECTION_NAME, activeGameUser.id), { myRewards: updatedRewards }); } catch(err) { setOfflineMode(true); }
+          };
 
-             if (offlineMode) {
-                 const updatedUser = { ...activeGameUser, myRewards: updatedRewards };
-                 LocalDB.saveUser(updatedUser);
-                 setActiveGameUser(updatedUser);
-                 return;
-             }
+          // Admin Action
+          const handleAddCustomExercise = async (newEx) => {
+              if(offlineMode) {
+                  LocalDB.saveCustomExercise(newEx);
+                  setExercises(prev => [...prev, newEx]);
+              } else {
+                  try {
+                      await setDoc(doc(db, EXERCISES_COLLECTION_NAME, newEx.id), newEx);
+                      // Listener will update state
+                  } catch(err) {
+                      console.error(err);
+                      alert("Erro ao salvar exercício.");
+                  }
+              }
+              setShowAdmin(false);
+          };
 
-             try {
-                 const userRef = doc(db, COLLECTION_NAME, activeGameUser.id);
-                 await updateDoc(userRef, { myRewards: updatedRewards });
-             } catch(err) { setOfflineMode(true); alert("Erro de conexão. Mudando para offline."); }
+          const handleAdminClick = () => {
+              const pwd = prompt("Senha de Administrador:");
+              if(pwd === "290517") {
+                  setShowAdmin(true);
+              } else if (pwd) {
+                  alert("Senha incorreta.");
+              }
           };
 
           if (!activeGameUser) return React.createElement(AuthScreen, { onLogin: handleLogin, onRegister: handleRegister, offlineMode, onRetryConnection: connectFirebase });
 
           return React.createElement('div', { className: "min-h-screen bg-slate-900 text-slate-100 font-sans pb-20" }, [
+            // Admin Modal
+            showAdmin && React.createElement(AdminExerciseModal, { onClose: () => setShowAdmin(false), onSave: handleAddCustomExercise }),
+
             // Header
             React.createElement('div', { className: "bg-slate-800 p-4 sticky top-0 z-10 shadow-lg border-b border-slate-700", key: "header" }, [
               React.createElement('div', { className: "flex justify-between items-center mb-2" }, [
                 React.createElement('h1', { className: "text-xl font-bold text-orange-500 flex items-center gap-2" }, [ React.createElement(Flame), " FitQuest" ]),
                 React.createElement('div', { className: "flex items-center gap-3" }, [
+                   // Admin Button
+                   React.createElement('button', { onClick: handleAdminClick, className: "text-slate-500 hover:text-white" }, React.createElement(Lock, { size: 16 })),
+                   
                    React.createElement('div', { className: "flex items-center gap-1", title: offlineMode ? "Modo Offline" : "Online" }, 
                         offlineMode 
                         ? React.createElement(WifiOff, { size: 16, className: "text-red-500" }) 
@@ -1062,13 +1068,13 @@
                    React.createElement(AlertTriangle, { size: 14 }), " Modo Offline: Dados salvos apenas neste dispositivo."
                ]),
                
-               // Conditional Rendering: If Editing, show Logger, else standard flow
                (activeTab === 'dashboard' && !editingItem) && React.createElement(Dashboard, { user: activeGameUser, onLogClick: () => setActiveTab('log'), leaderboard: leaderboard, currentUserId: activeGameUser.id }),
                
                (activeTab === 'log' || editingItem) && React.createElement(WorkoutLogger, { 
                    onLog: handleLogWorkout, 
                    onCancel: () => { setEditingItem(null); setActiveTab('dashboard'); },
-                   initialData: editingItem // Pass data if editing
+                   initialData: editingItem,
+                   availableExercises: exercises // Pass dynamic list
                }),
                
                (activeTab === 'leaderboard' && !editingItem) && React.createElement(Leaderboard, { users: leaderboard, currentUserId: activeGameUser.id }),
@@ -1077,7 +1083,7 @@
                (activeTab === 'feed' && !editingItem) && React.createElement(ActivityFeed, { 
                    feed: feed, 
                    currentUserId: activeGameUser.id,
-                   onEdit: (item) => { setEditingItem(item); setActiveTab('log'); } // Handle Edit Click
+                   onEdit: (item) => { setEditingItem(item); setActiveTab('log'); }
                })
             ]),
 
