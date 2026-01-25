@@ -49,7 +49,7 @@
           Trophy, Flame, Dumbbell, Footprints, PlusCircle, ShoppingBag, 
           Users, Activity, CheckCircle2, TrendingUp, User as UserIcon, 
           Medal, LogIn, LogOut, Lock, Wifi, WifiOff, AlertTriangle, RefreshCw,
-          Target, Flag, Crown, Mountain, Music, Heart, Zap, Trash2 // Added Trash2
+          Target, Flag, Crown, Mountain, Music, Heart, Zap, Trash2, Calendar, Edit2, X
         } from "https://esm.sh/lucide-react@0.263.1?deps=react@18.2.0";
 
         // Firebase v10
@@ -60,7 +60,7 @@
         } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-auth.js";
         import { 
           getFirestore, collection, doc, setDoc, updateDoc, 
-          onSnapshot, addDoc, serverTimestamp, increment, getDocs, query, where 
+          onSnapshot, addDoc, serverTimestamp, increment, getDocs, query, where, getDoc 
         } from "https://www.gstatic.com/firebasejs/10.8.0/firebase-firestore.js";
 
         // --- SUA CONFIGURAÇÃO ---
@@ -119,6 +119,32 @@
           return Math.min(Math.max(progress, 0), 100);
         };
 
+        const formatDate = (timestamp) => {
+            if (!timestamp) return 'Data desc.';
+            
+            // Handle Firestore Timestamp or JS Date or ISO String
+            let date;
+            if (timestamp.seconds) {
+                date = new Date(timestamp.seconds * 1000);
+            } else if (typeof timestamp === 'string') {
+                date = new Date(timestamp);
+            } else {
+                date = timestamp;
+            }
+
+            const today = new Date();
+            const isToday = date.getDate() === today.getDate() && 
+                            date.getMonth() === today.getMonth() && 
+                            date.getFullYear() === today.getFullYear();
+            
+            if (isToday) {
+                return `Hoje, ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+            }
+            
+            return date.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit' }) + 
+                   ` às ${date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+        };
+
         // --- LOCAL STORAGE MANAGER (Offline Mode) ---
         const LocalDB = {
             getUsers: () => JSON.parse(localStorage.getItem(COLLECTION_NAME) || '[]'),
@@ -130,10 +156,19 @@
                 localStorage.setItem(COLLECTION_NAME, JSON.stringify(users));
             },
             getFeed: () => JSON.parse(localStorage.getItem(FEED_COLLECTION_NAME) || '[]'),
+            saveFeed: (feed) => localStorage.setItem(FEED_COLLECTION_NAME, JSON.stringify(feed)),
             addToFeed: (item) => {
                 const feed = LocalDB.getFeed();
-                feed.unshift(item); // Add to top
+                feed.unshift(item); 
                 localStorage.setItem(FEED_COLLECTION_NAME, JSON.stringify(feed.slice(0, 50))); 
+            },
+            updateFeedItem: (updatedItem) => {
+                const feed = LocalDB.getFeed();
+                const index = feed.findIndex(i => i.id === updatedItem.id);
+                if(index >= 0) {
+                    feed[index] = { ...feed[index], ...updatedItem };
+                    LocalDB.saveFeed(feed);
+                }
             },
             getChallenges: () => JSON.parse(localStorage.getItem(CHALLENGES_COLLECTION_NAME) || '[]'),
             saveChallenge: (challenge) => {
@@ -179,7 +214,7 @@
                   React.createElement('div', { className: "text-slate-400 text-xs uppercase font-bold tracking-wider mb-1" }, "Total Treinos"),
                   React.createElement('div', { className: "text-2xl font-bold text-white flex items-center gap-2" }, [
                     React.createElement(Dumbbell, { size: 20, className: "text-blue-400" }),
-                    user.workoutsCompleted || Math.floor((user.xp || 0) / 100) // Fallback to calculation if field missing
+                    user.workoutsCompleted || Math.floor((user.xp || 0) / 100) 
                   ])
                 ]),
                 React.createElement('div', { className: "bg-slate-800 p-4 rounded-xl border border-slate-700" }, [
@@ -288,7 +323,6 @@
                                          style: { width: `${percentage}%` } 
                                      })
                                  ),
-                                 // Botão de Reivindicar (se 100% e não finalizado)
                                  (!isWinner && percentage >= 100 && u.id === currentUserId) && 
                                  React.createElement('button', {
                                      onClick: () => onClaimWin(challenge.id),
@@ -303,17 +337,54 @@
           ]);
         }
 
-        function WorkoutLogger({ onLog, onCancel }) {
-          const [type, setType] = useState(EXERCISES[0].id);
-          const [intensity, setIntensity] = useState('normal');
-          const [notes, setNotes] = useState('');
+        function WorkoutLogger({ onLog, onCancel, initialData }) {
+          const [type, setType] = useState(initialData?.workoutType || EXERCISES[0].id);
+          const [intensity, setIntensity] = useState(initialData?.intensity || 'normal');
+          const [notes, setNotes] = useState(initialData?.notes || '');
+          
+          // Get today in YYYY-MM-DD format for input
+          const getTodayStr = () => {
+              const d = new Date();
+              return d.toISOString().split('T')[0];
+          };
+          
+          // If editing, convert timestamp to YYYY-MM-DD
+          const getInitialDateStr = () => {
+              if (initialData?.timestamp) {
+                  let d;
+                  if (initialData.timestamp.seconds) d = new Date(initialData.timestamp.seconds * 1000);
+                  else if (typeof initialData.timestamp === 'string') d = new Date(initialData.timestamp);
+                  else d = new Date();
+                  return d.toISOString().split('T')[0];
+              }
+              return getTodayStr();
+          };
+
+          const [dateStr, setDateStr] = useState(getInitialDateStr());
 
           return React.createElement('div', { className: "bg-slate-800 rounded-2xl p-6 border border-slate-700 shadow-xl animate-slide-up" }, [
-            React.createElement('h2', { className: "text-xl font-bold text-white mb-6 flex items-center gap-2", key: 'title' }, [
-              React.createElement(CheckCircle2, { className: "text-green-500" }),
-              " Registrar Treino"
+            React.createElement('div', { className: "flex justify-between items-center mb-6", key: 'header' }, [
+                React.createElement('h2', { className: "text-xl font-bold text-white flex items-center gap-2" }, [
+                  React.createElement(initialData ? Edit2 : CheckCircle2, { className: "text-green-500" }),
+                  initialData ? " Editar Treino" : " Registrar Treino"
+                ]),
+                initialData && React.createElement('button', { onClick: onCancel, className: "text-slate-400 hover:text-white" }, React.createElement(X))
             ]),
             React.createElement('div', { className: "space-y-6", key: 'form' }, [
+              // Date Input
+              React.createElement('div', null, [
+                React.createElement('label', { className: "text-slate-400 text-sm font-medium mb-2 block" }, "Data"),
+                React.createElement('div', { className: "relative" }, [
+                    React.createElement(Calendar, { size: 18, className: "absolute left-3 top-3 text-slate-500" }),
+                    React.createElement('input', {
+                        type: "date",
+                        value: dateStr,
+                        onChange: (e) => setDateStr(e.target.value),
+                        className: "w-full bg-slate-900 border border-slate-700 rounded-lg p-2 pl-10 text-white text-sm focus:border-blue-500 outline-none"
+                    })
+                ])
+              ]),
+
               // Type Grid
               React.createElement('div', null, [
                 React.createElement('label', { className: "text-slate-400 text-sm font-medium mb-2 block" }, "Selecione o Treino"),
@@ -355,8 +426,11 @@
               ]),
               // Buttons
               React.createElement('div', { className: "flex gap-3 pt-4" }, [
-                React.createElement('button', { onClick: onCancel, className: "flex-1 py-3 rounded-lg font-medium text-slate-400 hover:bg-slate-700 transition-colors" }, "Cancelar"),
-                React.createElement('button', { onClick: () => onLog(type, intensity, notes), className: "flex-1 bg-green-600 hover:bg-green-500 py-3 rounded-lg font-bold text-white shadow-lg transition-colors" }, "Confirmar")
+                !initialData && React.createElement('button', { onClick: onCancel, className: "flex-1 py-3 rounded-lg font-medium text-slate-400 hover:bg-slate-700 transition-colors" }, "Cancelar"),
+                React.createElement('button', { 
+                    onClick: () => onLog(type, intensity, notes, dateStr), // Pass date
+                    className: "flex-1 bg-green-600 hover:bg-green-500 py-3 rounded-lg font-bold text-white shadow-lg transition-colors" 
+                }, initialData ? "Salvar Alterações" : "Confirmar")
               ])
             ])
           ]);
@@ -451,7 +525,7 @@
           ]);
         }
         
-        function ActivityFeed({ feed }) {
+        function ActivityFeed({ feed, currentUserId, onEdit }) {
           return React.createElement('div', { className: "space-y-4" }, [
              React.createElement('h2', { className: "text-xl font-bold text-white mb-4 flex items-center gap-2", key: 'title' }, [
                React.createElement(TrendingUp, { className: "text-blue-400" }), " Atividade da Galera"
@@ -459,11 +533,17 @@
              React.createElement('div', { className: "space-y-4 relative before:absolute before:left-4 before:top-2 before:bottom-2 before:w-0.5 before:bg-slate-800", key: 'feed-list' },
                feed.map((item, i) => React.createElement('div', { key: item.id || i, className: "relative pl-10" }, [
                   React.createElement('div', { className: "absolute left-2 top-0 w-4 h-4 rounded-full bg-slate-700 border-2 border-slate-900 z-10 text-[10px] flex items-center justify-center" }, item.type === 'reward' ? '🎁' : (item.type === 'win' ? '🏆' : '💪')),
-                  React.createElement('div', { className: "bg-slate-800 p-3 rounded-xl border border-slate-700" }, [
+                  React.createElement('div', { className: "bg-slate-800 p-3 rounded-xl border border-slate-700 relative" }, [
                     React.createElement('div', { className: "flex items-center gap-2 mb-1" }, [
                       React.createElement('span', { className: "text-lg" }, item.userAvatar),
                       React.createElement('span', { className: "font-bold text-slate-200" }, item.userName),
-                      React.createElement('span', { className: "text-xs text-slate-500 ml-auto" }, item.timestamp?.seconds ? new Date(item.timestamp.seconds * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'}) : 'Agora')
+                      React.createElement('span', { className: "text-xs text-slate-500 ml-auto" }, formatDate(item.timestamp)), // New Date Format
+                      // Edit Button for owner (only workouts)
+                      (item.userId === currentUserId && item.type === 'workout' && onEdit) &&
+                      React.createElement('button', {
+                          onClick: () => onEdit(item),
+                          className: "ml-2 text-slate-500 hover:text-blue-400 transition-colors"
+                      }, React.createElement(Edit2, { size: 14 }))
                     ]),
                     item.type === 'workout' 
                       ? React.createElement('div', null, [
@@ -544,6 +624,7 @@
           const [challenges, setChallenges] = useState([]);
           const [feed, setFeed] = useState([]);
           const [offlineMode, setOfflineMode] = useState(false);
+          const [editingItem, setEditingItem] = useState(null); // State for editing
 
           const connectFirebase = async () => {
              try { 
@@ -719,30 +800,87 @@
 
           const handleLogout = () => { setActiveGameUser(null); };
 
-          const handleLogWorkout = async (typeId, intensity, notes) => {
+          const handleLogWorkout = async (typeId, intensity, notes, dateStr) => { // Added dateStr param
             if (!activeGameUser) return;
             
-            // Find exercise data from the single source of truth
+            // Convert date string from input to Timestamp object (or ms for offline)
+            let timestamp;
+            if (dateStr) {
+                const parts = dateStr.split('-');
+                // Create date at noon to avoid timezone issues shifting the day
+                const d = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0); 
+                timestamp = offlineMode ? { seconds: d.getTime() / 1000 } : d; 
+            } else {
+                timestamp = offlineMode ? { seconds: Date.now() / 1000 } : serverTimestamp();
+            }
+
             const exercise = EXERCISES.find(e => e.id === typeId) || EXERCISES[0];
             let baseXp = exercise.xp;
-            
-            // XP comes directly from exercise list (no multiplier logic)
             let earnedXp = baseXp; 
+            const earnedCoins = Math.floor(earnedXp / 10);
+
+            // --- EDIT MODE LOGIC ---
+            if (editingItem) {
+                const diffXp = earnedXp - editingItem.xpGained; // New - Old
+                // Coins diff handled roughly proportional
+                const diffCoins = earnedCoins - Math.floor(editingItem.xpGained / 10);
+
+                const updatedItem = {
+                    ...editingItem,
+                    workoutType: typeId,
+                    workoutLabel: exercise.label,
+                    xpGained: earnedXp,
+                    notes: notes,
+                    intensity: intensity,
+                    timestamp: timestamp
+                };
+
+                if (offlineMode) {
+                    const updatedUser = {
+                        ...activeGameUser,
+                        xp: (activeGameUser.xp || 0) + diffXp,
+                        coins: (activeGameUser.coins || 0) + diffCoins,
+                    };
+                    LocalDB.saveUser(updatedUser);
+                    LocalDB.updateFeedItem(updatedItem);
+                    setActiveGameUser(updatedUser);
+                    setEditingItem(null);
+                    refreshData();
+                    alert("Atividade atualizada!");
+                    return;
+                }
+
+                try {
+                    const userRef = doc(db, COLLECTION_NAME, activeGameUser.id);
+                    await updateDoc(userRef, {
+                        xp: increment(diffXp),
+                        coins: increment(diffCoins)
+                    });
+                    const feedRef = doc(db, FEED_COLLECTION_NAME, editingItem.id);
+                    await updateDoc(feedRef, updatedItem);
+                    setEditingItem(null);
+                    alert("Atividade atualizada!");
+                } catch (err) {
+                    console.error(err);
+                    alert("Erro ao editar atividade.");
+                }
+                return;
+            }
+            // --- END EDIT LOGIC ---
             
-            let newStreak = (activeGameUser.streak || 0) + 1; 
-            const totalXp = earnedXp;
-            const earnedCoins = Math.floor(totalXp / 10);
+            // Standard Log Logic
+            let newStreak = (activeGameUser.streak || 0) + 1; // Simplified streak for now
             
             const feedItem = { 
               userId: activeGameUser.id, userName: activeGameUser.username, userAvatar: activeGameUser.avatar, 
-              type: 'workout', workoutType: typeId, workoutLabel: exercise.label, xpGained: totalXp, timestamp: { seconds: Date.now() / 1000 }, notes: notes || '',
+              type: 'workout', workoutType: typeId, workoutLabel: exercise.label, xpGained: earnedXp, timestamp: timestamp, notes: notes || '',
               intensity: intensity 
             };
 
             if (offlineMode) {
                 const updatedUser = { 
                     ...activeGameUser, 
-                    xp: (activeGameUser.xp || 0) + totalXp, 
+                    xp: (activeGameUser.xp || 0) + earnedXp, 
                     coins: (activeGameUser.coins || 0) + earnedCoins, 
                     streak: newStreak,
                     workoutsCompleted: (activeGameUser.workoutsCompleted || 0) + 1
@@ -751,24 +889,23 @@
                 LocalDB.addToFeed(feedItem);
                 setActiveGameUser(updatedUser);
                 refreshData();
-                alert(`Treino de ${exercise.label} Registrado! +${totalXp} XP`);
+                alert(`Treino de ${exercise.label} Registrado! +${earnedXp} XP`);
                 setActiveTab('dashboard');
                 return;
             }
 
             try {
                 const userRef = doc(db, COLLECTION_NAME, activeGameUser.id);
-                // Update XP directly in DB -> Ranking Listener will pick this up automatically
                 await updateDoc(userRef, { 
-                    xp: increment(totalXp), 
+                    xp: increment(earnedXp), 
                     coins: increment(earnedCoins), 
                     streak: newStreak, 
                     workoutsCompleted: increment(1),
-                    lastWorkout: serverTimestamp() 
+                    lastWorkout: timestamp 
                 });
                 const feedRef = collection(db, FEED_COLLECTION_NAME);
-                await addDoc(feedRef, { ...feedItem, timestamp: serverTimestamp() });
-                alert(`Treino de ${exercise.label} Registrado! +${totalXp} XP`);
+                await addDoc(feedRef, feedItem);
+                alert(`Treino de ${exercise.label} Registrado! +${earnedXp} XP`);
                 setActiveTab('dashboard');
             } catch (err) {
                  console.error(err);
@@ -879,7 +1016,6 @@
              } catch(err) { setOfflineMode(true); alert("Erro de conexão. Mudando para offline."); }
           };
 
-          // --- NOVO: Função para excluir recompensa ---
           const handleDeleteReward = async (rewardId) => {
              if (!activeGameUser) return;
              const updatedRewards = activeGameUser.myRewards.filter(r => r.id !== rewardId);
@@ -894,7 +1030,6 @@
              try {
                  const userRef = doc(db, COLLECTION_NAME, activeGameUser.id);
                  await updateDoc(userRef, { myRewards: updatedRewards });
-                 // update local state optimisticly or wait for snapshot? Snapshot handles it.
              } catch(err) { setOfflineMode(true); alert("Erro de conexão. Mudando para offline."); }
           };
 
@@ -926,23 +1061,35 @@
                offlineMode && React.createElement('div', { className: "bg-red-500/10 border border-red-500/50 text-red-200 text-xs p-2 rounded mb-4 flex items-center gap-2" }, [
                    React.createElement(AlertTriangle, { size: 14 }), " Modo Offline: Dados salvos apenas neste dispositivo."
                ]),
-               activeTab === 'dashboard' && React.createElement(Dashboard, { user: activeGameUser, onLogClick: () => setActiveTab('log'), leaderboard: leaderboard, currentUserId: activeGameUser.id }),
-               activeTab === 'log' && React.createElement(WorkoutLogger, { onLog: handleLogWorkout, onCancel: () => setActiveTab('dashboard') }),
-               activeTab === 'leaderboard' && React.createElement(Leaderboard, { users: leaderboard, currentUserId: activeGameUser.id }),
-               activeTab === 'challenges' && React.createElement(ChallengeList, { challenges: challenges, users: leaderboard, currentUserId: activeGameUser.id, onCreateChallenge: handleCreateChallenge, onClaimWin: handleClaimWin }),
-               activeTab === 'rewards' && React.createElement(RewardShop, { user: activeGameUser, onAdd: handleAddReward, onRedeem: handleRedeemReward, onDelete: handleDeleteReward }),
-               activeTab === 'feed' && React.createElement(ActivityFeed, { feed: feed })
+               
+               // Conditional Rendering: If Editing, show Logger, else standard flow
+               (activeTab === 'dashboard' && !editingItem) && React.createElement(Dashboard, { user: activeGameUser, onLogClick: () => setActiveTab('log'), leaderboard: leaderboard, currentUserId: activeGameUser.id }),
+               
+               (activeTab === 'log' || editingItem) && React.createElement(WorkoutLogger, { 
+                   onLog: handleLogWorkout, 
+                   onCancel: () => { setEditingItem(null); setActiveTab('dashboard'); },
+                   initialData: editingItem // Pass data if editing
+               }),
+               
+               (activeTab === 'leaderboard' && !editingItem) && React.createElement(Leaderboard, { users: leaderboard, currentUserId: activeGameUser.id }),
+               (activeTab === 'challenges' && !editingItem) && React.createElement(ChallengeList, { challenges: challenges, users: leaderboard, currentUserId: activeGameUser.id, onCreateChallenge: handleCreateChallenge, onClaimWin: handleClaimWin }),
+               (activeTab === 'rewards' && !editingItem) && React.createElement(RewardShop, { user: activeGameUser, onAdd: handleAddReward, onRedeem: handleRedeemReward, onDelete: handleDeleteReward }),
+               (activeTab === 'feed' && !editingItem) && React.createElement(ActivityFeed, { 
+                   feed: feed, 
+                   currentUserId: activeGameUser.id,
+                   onEdit: (item) => { setEditingItem(item); setActiveTab('log'); } // Handle Edit Click
+               })
             ]),
 
             // Navigation
             React.createElement('div', { className: "fixed bottom-0 left-0 w-full bg-slate-800 border-t border-slate-700 p-2 flex justify-around items-center z-20 pb-safe", key: "nav" }, [
-               React.createElement(NavButton, { Icon: Activity, label: "Painel", active: activeTab === 'dashboard', onClick: () => setActiveTab('dashboard') }),
-               React.createElement(NavButton, { Icon: Target, label: "Desafios", active: activeTab === 'challenges', onClick: () => setActiveTab('challenges') }),
+               React.createElement(NavButton, { Icon: Activity, label: "Painel", active: activeTab === 'dashboard', onClick: () => { setEditingItem(null); setActiveTab('dashboard'); } }),
+               React.createElement(NavButton, { Icon: Target, label: "Desafios", active: activeTab === 'challenges', onClick: () => { setEditingItem(null); setActiveTab('challenges'); } }),
                React.createElement('div', { className: "relative -top-5" }, 
-                 React.createElement('button', { onClick: () => setActiveTab('log'), className: "bg-orange-500 hover:bg-orange-600 text-white p-4 rounded-full shadow-lg border-4 border-slate-900" }, React.createElement(PlusCircle, { size: 32 }))
+                 React.createElement('button', { onClick: () => { setEditingItem(null); setActiveTab('log'); }, className: "bg-orange-500 hover:bg-orange-600 text-white p-4 rounded-full shadow-lg border-4 border-slate-900" }, React.createElement(PlusCircle, { size: 32 }))
                ),
-               React.createElement(NavButton, { Icon: ShoppingBag, label: "Prêmios", active: activeTab === 'rewards', onClick: () => setActiveTab('rewards') }),
-               React.createElement(NavButton, { Icon: TrendingUp, label: "Feed", active: activeTab === 'feed', onClick: () => setActiveTab('feed') })
+               React.createElement(NavButton, { Icon: ShoppingBag, label: "Prêmios", active: activeTab === 'rewards', onClick: () => { setEditingItem(null); setActiveTab('rewards'); } }),
+               React.createElement(NavButton, { Icon: TrendingUp, label: "Feed", active: activeTab === 'feed', onClick: () => { setEditingItem(null); setActiveTab('feed'); } })
             ])
           ]);
         }
