@@ -145,7 +145,7 @@
             const yesterday = new Date(today);
             yesterday.setDate(yesterday.getDate() - 1);
 
-            // Compare dates ignoring time
+            // Compare dates ignoring time for labels
             const isToday = date.toDateString() === today.toDateString();
             const isYesterday = date.toDateString() === yesterday.toDateString();
             
@@ -228,15 +228,12 @@
             const uniqueDates = new Set();
             userWorkouts.forEach(w => {
                 let d;
-                // Handle different timestamp formats
                 if (w.timestamp && typeof w.timestamp.toDate === 'function') d = w.timestamp.toDate();
                 else if (w.timestamp && w.timestamp.seconds) d = new Date(w.timestamp.seconds * 1000);
                 else if (typeof w.timestamp === 'string') d = new Date(w.timestamp);
-                else d = w.timestamp; // Assume Date obj or fallback
+                else d = w.timestamp; 
 
                 if(d && !isNaN(d.getTime())) {
-                    // Force date to YYYY-MM-DD string to avoid timezone shifts on comparison
-                    // Use local date parts
                     const year = d.getFullYear();
                     const month = String(d.getMonth() + 1).padStart(2, '0');
                     const day = String(d.getDate()).padStart(2, '0');
@@ -277,7 +274,7 @@
                 const prevDateStr = sortedDates[i];
                 
                 // Calculate expected previous date
-                const currDateObj = new Date(currentStr + "T12:00:00"); // Noon to avoid timezone
+                const currDateObj = new Date(currentStr + "T12:00:00"); 
                 currDateObj.setDate(currDateObj.getDate() - 1);
                 
                 const pYear = currDateObj.getFullYear();
@@ -437,9 +434,7 @@
           const getInitialDateStr = () => {
               if (initialData?.timestamp) {
                   let d;
-                  // Robust timestamp parsing
-                  if (initialData.timestamp && typeof initialData.timestamp.toDate === 'function') d = initialData.timestamp.toDate();
-                  else if (initialData.timestamp.seconds) d = new Date(initialData.timestamp.seconds * 1000);
+                  if (initialData.timestamp.seconds) d = new Date(initialData.timestamp.seconds * 1000);
                   else if (typeof initialData.timestamp === 'string') d = new Date(initialData.timestamp);
                   else d = new Date();
                   return toLocalDateInputString(d); 
@@ -455,11 +450,9 @@
                   React.createElement(initialData ? Edit2 : CheckCircle2, { className: "text-green-500" }),
                   initialData ? " Editar Treino" : " Registrar Treino"
                 ]),
-                // Close/Cancel button
                 React.createElement('button', { onClick: onCancel, className: "text-slate-400 hover:text-white" }, React.createElement(X))
             ]),
             React.createElement('div', { className: "space-y-6", key: 'form' }, [
-              // Date Input
               React.createElement('div', null, [
                 React.createElement('label', { className: "text-slate-400 text-sm font-medium mb-2 block" }, "Data"),
                 React.createElement('div', { className: "relative w-full" }, [
@@ -528,9 +521,7 @@
                 })
               ]),
               
-              // Action Buttons
               React.createElement('div', { className: "flex gap-3 pt-4" }, [
-                // Delete Button - Only shown when editing
                 initialData && React.createElement('button', { 
                     onClick: () => {
                         if (confirm("Excluir esta atividade? Os pontos serão removidos.")) {
@@ -541,7 +532,6 @@
                     title: "Excluir Atividade"
                 }, React.createElement(Trash2, { size: 20 })),
                 
-                // Cancel/Save Buttons
                 !initialData && React.createElement('button', { onClick: onCancel, className: "flex-1 py-3 rounded-lg font-medium text-slate-400 hover:bg-slate-700 transition-colors" }, "Cancelar"),
                 React.createElement('button', { 
                     onClick: () => onLog(type, intensity, notes, dateStr, isFirstTime), 
@@ -552,7 +542,7 @@
           ]);
         }
 
-        function Leaderboard({ users, currentUserId, feed }) { // Added feed prop
+        function Leaderboard({ users, currentUserId, feed }) { 
            return React.createElement('div', { className: "space-y-4" }, [
              React.createElement('h2', { className: "text-xl font-bold text-white mb-4 flex items-center gap-2", key: 'title' }, [
                React.createElement(Trophy, { className: "text-yellow-500" }),
@@ -560,7 +550,6 @@
              ]),
              React.createElement('div', { className: "space-y-2", key: 'list' }, 
                users.map((u, index) => {
-                 // Calculate streak from feed instead of user profile
                  const realStreak = getStreakFromHistory(u.id, feed);
                  
                  return React.createElement('div', { 
@@ -1032,12 +1021,31 @@
             if (!activeGameUser) return;
             
             let timestamp;
-            let currentWorkoutDate = new Date();
+            let currentWorkoutDate = new Date(); // Para cálculo de streak
+            
             if (dateStr) {
                 const parts = dateStr.split('-');
-                const d = new Date(parts[0], parts[1] - 1, parts[2], 12, 0, 0); 
-                timestamp = offlineMode ? { seconds: d.getTime() / 1000 } : d; 
-                currentWorkoutDate = new Date(parts[0], parts[1] - 1, parts[2]);
+                const year = parseInt(parts[0]);
+                const month = parseInt(parts[1]) - 1;
+                const day = parseInt(parts[2]);
+                
+                // Verifica se a data selecionada é Hoje
+                const now = new Date();
+                const isToday = now.getFullYear() === year && 
+                                now.getMonth() === month && 
+                                now.getDate() === day;
+                
+                if (isToday) {
+                    // Se for hoje, usa a data/hora atual exata
+                    timestamp = offlineMode ? { seconds: Date.now() / 1000 } : serverTimestamp();
+                    if (!offlineMode) timestamp = new Date(); 
+                } else {
+                    // Se for outra data, fixa em 12:00 para evitar problemas de fuso
+                    const d = new Date(year, month, day, 12, 0, 0);
+                    timestamp = offlineMode ? { seconds: d.getTime() / 1000 } : d;
+                }
+                
+                currentWorkoutDate = new Date(year, month, day);
             } else {
                 timestamp = offlineMode ? { seconds: Date.now() / 1000 } : serverTimestamp();
             }
